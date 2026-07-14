@@ -5,8 +5,9 @@
  * a 15s clip is far larger than a route handler will accept as a request body.
  * Our server bookends it: init decides whether the guest may shoot at all, and
  * confirm is what actually strips metadata and moves the counters. A file that
- * lands in the bucket without a successful confirm is invisible and gets swept
- * within the hour, so a half-finished upload leaves nothing behind.
+ * lands in the bucket without a successful confirm is invisible to everyone —
+ * no signed URL is ever minted for it — and the nightly sweep takes it once it
+ * is an hour old, so a half-finished upload leaves nothing behind.
  */
 
 export type Capture = {

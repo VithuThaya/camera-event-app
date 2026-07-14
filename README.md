@@ -30,7 +30,8 @@ download as one ZIP.
 | 1 | Schema, tokens, join + consent | Done |
 | 2 | Camera capture, upload, EXIF strip | Done |
 | 3 | Unlock, host gallery, slideshow, ZIP download | Done |
-| 4 | Offline queue, retention cron | Next |
+| 4a | Offline capture queue | Next |
+| 4b | Retention cron, deletion warnings | Done |
 | 5 | Film-look UI pass | Planned |
 
 ## Stack
@@ -80,7 +81,12 @@ Storage because a 15s clip is far larger than a route handler will accept, but
 the server bookends it: `upload/init` decides whether the guest may shoot at
 all, and `upload/confirm` strips the photo's metadata and moves the quota
 counters. Nothing counts until confirm succeeds, so an abandoned upload leaves
-an invisible `pending` row that the retention sweep clears within the hour.
+an invisible `pending` row, which the nightly sweep clears once it is an hour
+old. An hour is when it *becomes* sweepable, not when it goes: the sweep runs at
+03:00, so such an object can sit in the bucket for the better part of a day.
+That matters more than its size suggests — `confirm` never ran on it, so its
+EXIF was never stripped. It is unreachable by anyone in the meantime, since
+nothing but a signed URL can read the bucket and none is ever minted for it.
 
 Quotas are enforced by the database, not by the route. Each counter moves in a
 single statement that carries its own limit (`update … where upload_count <
@@ -95,6 +101,18 @@ photos still sitting there. The purge works from the bucket listing, not from
 reached `confirmed`, which means `confirm` never ran and its metadata was never
 stripped. A row-driven delete would walk straight past exactly that file.
 
+The deletion the consent notice promises is carried out by one nightly cron
+(`0 3 * * *`), and it is the only thing that makes that promise true rather than
+decorative. It does not decide the date: it reads `retentionDeadline()` and
+`unlockMoment()` — the same two functions the host's countdown is drawn from —
+because a sweep with its own opinion of the date would delete media on a day the
+host was never shown. The clock starts at the reveal, not at creation, so an
+event made in January and unlocked in June keeps its media until June plus
+`retention_days`; an event never unlocked has no deadline and never expires.
+`CRON_SECRET` is the whole gate, compared in constant time, and the route
+refuses to run at all when it is unset — a deploy that forgets it stops deleting
+rather than starts deleting for anyone who finds the URL.
+
 `scripts/verify-exif.mjs` proves metadata stripping against raw JPEG segment
 bytes rather than asking the imaging library to grade its own work.
 `scripts/verify-upload.mjs` drives the real guest routes and reads each stored
@@ -103,7 +121,10 @@ actually landed in the bucket. `scripts/verify-host.mjs` drives the real host
 routes: 95 checks covering the pre-unlock 403 on a direct call, guest tokens
 against every host route, `unlocked_at` surviving a replay and a three-way
 race, the ZIP's own bytes, and the abandoned object really leaving Storage on
-delete.
+delete. `scripts/verify-retention.mjs` runs the real cron route against
+backdated events: every deletion it checks is paired with a survival check,
+because a sweep that deleted every event on earth would pass a test that only
+looks at the one it was supposed to take.
 
 Known and accepted for the MVP: a guest can clear storage or switch devices to
 get a fresh quota. Without accounts this is a soft cap backed by a host-visible
@@ -147,9 +168,12 @@ latter two need `npm run dev` running):
 node --conditions=react-server --experimental-strip-types scripts/verify-exif.mjs
 node --env-file=.env.local scripts/verify-upload.mjs
 node --env-file=.env.local scripts/verify-host.mjs
+node --env-file=.env.local scripts/verify-retention.mjs
 ```
 
 Each must exit 0. They create their own events and delete them afterwards.
+`verify-retention.mjs` additionally needs `CRON_SECRET` set to the same value the
+dev server was started with — it calls the cron route the way Vercel does.
 
 ### If `fetch` fails with "unable to get local issuer certificate"
 

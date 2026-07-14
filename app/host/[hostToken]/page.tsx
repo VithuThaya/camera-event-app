@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { GuestLink } from "@/components/host/GuestLink"
 import { LiveStatsPanel } from "@/components/host/LiveStatsPanel"
+import { RetentionNotice } from "@/components/host/RetentionNotice"
 import { UnlockControl } from "@/components/host/UnlockControl"
 import { buildHostDashboard, findEventByHostToken } from "@/lib/host"
 
@@ -54,6 +55,13 @@ export default async function HostDashboardPage({
           This event has passed its deletion date. The photos are gone — this page is
           all that is left of it.
         </p>
+      )}
+
+      {/* Only once there is something to lose. A locked event has no deadline
+          at all — the clock starts at the reveal — and an archived one has
+          already been swept, so the notice above is the truthful one. */}
+      {!archived && dashboard.retention.deadline && (
+        <RetentionNotice deadline={dashboard.retention.deadline} />
       )}
 
       <div className="mt-8 space-y-6">
