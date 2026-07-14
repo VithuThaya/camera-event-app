@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-import { formatMoment } from "@/lib/format"
+import { useMoment } from "@/lib/useMoment"
 import type { HostDashboard } from "@/lib/host"
 
 /**
@@ -27,6 +27,12 @@ export function UnlockControl({
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Above the early return, because hooks cannot be called conditionally — and
+  // null until the browser takes over, since the server cannot know the host's
+  // timezone and guessing tears this panel down on hydration. See lib/useMoment.
+  const openedAt = useMoment(unlock.unlockedAt)
+  const opensAt = useMoment(unlock.unlockAt)
 
   async function send(body: unknown) {
     setBusy(true)
@@ -59,10 +65,16 @@ export function UnlockControl({
       <section className="rounded border border-neutral-800 p-4">
         <h2 className="font-medium">Unlocked</h2>
         <p className="mt-1 text-sm text-neutral-400">
+          {/* Each condition stays on the raw date, so the sentence keeps its
+              shape across both render passes and only the moment arrives late. */}
           {unlock.unlockedAt
-            ? `You opened the roll on ${formatMoment(unlock.unlockedAt)}.`
+            ? openedAt
+              ? `You opened the roll on ${openedAt}.`
+              : "You opened the roll."
             : unlock.unlockAt
-              ? `It opened on schedule at ${formatMoment(unlock.unlockAt)}.`
+              ? opensAt
+                ? `It opened on schedule at ${opensAt}.`
+                : "It opened on schedule."
               : "The roll is open."}{" "}
           Guests can still add shots — the slideshow grows as the night goes on.
         </p>
@@ -75,7 +87,9 @@ export function UnlockControl({
       <h2 className="font-medium">Still sealed</h2>
       <p className="mt-1 text-sm text-neutral-400">
         {unlock.unlockAt
-          ? `Opens by itself on ${formatMoment(unlock.unlockAt)}.`
+          ? opensAt
+            ? `Opens by itself on ${opensAt}.`
+            : "Opens by itself at the time you set."
           : "Nothing opens until you say so."}{" "}
         Nobody has seen a single shot — including you.
       </p>

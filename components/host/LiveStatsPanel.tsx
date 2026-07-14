@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 
-import { formatBytes, formatMoment } from "@/lib/format"
+import { formatBytes } from "@/lib/format"
 import type { HostDashboard } from "@/lib/host"
+import { useMoment } from "@/lib/useMoment"
 
 /**
  * The numbers, refreshed while the host watches.
@@ -61,6 +62,10 @@ export function LiveStatsPanel({
     (usage.storageUsedBytes / limits.maxStorageBytes) * 100,
   )
 
+  // Null until the browser has taken over — the server cannot know the host's
+  // timezone, and guessing tears the panel down on hydration. See lib/useMoment.
+  const deletedOn = useMoment(data.retention.deadline)
+
   return (
     <section className="rounded border border-neutral-800 p-4">
       <div className="grid grid-cols-2 gap-4">
@@ -85,8 +90,12 @@ export function LiveStatsPanel({
 
       {data.retention.deadline && (
         <p className="mt-5 text-xs text-neutral-500">
-          Everything is deleted on {formatMoment(data.retention.deadline)}. Download it
-          before then — we keep no copy.
+          {/* The condition stays on the raw date, so this sentence exists in
+              both passes and only the moment inside it arrives late. */}
+          {deletedOn
+            ? `Everything is deleted on ${deletedOn}.`
+            : "Everything is deleted at the end of the retention window."}{" "}
+          Download it before then — we keep no copy.
         </p>
       )}
     </section>

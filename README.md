@@ -175,6 +175,16 @@ Each must exit 0. They create their own events and delete them afterwards.
 `verify-retention.mjs` additionally needs `CRON_SECRET` set to the same value the
 dev server was started with — it calls the cron route the way Vercel does.
 
+### If routes 404 in dev that exist on disk
+
+`next build` and `next dev` share the `.next` directory and do not agree about
+what belongs in it. Running the production build and then starting the dev
+server leaves a state where some routes resolve and others return Next's own 404
+page — nested ones go first, so `/api/host/[hostToken]` keeps working while
+`/api/host/[hostToken]/unlock` disappears, which reads exactly like a bug in the
+route you just wrote. `rm -rf .next` and restart. Worth knowing before you spend
+an hour debugging code that was never broken.
+
 ### If `fetch` fails with "unable to get local issuer certificate"
 
 Node ships its own CA list rather than using the system keychain, so a machine
