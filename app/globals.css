@@ -1,26 +1,114 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/**
+ * The darkroom.
+ *
+ * The app has one job at the end: show someone their photographs. Every colour
+ * here is picked to get out of the way of that — a warm near-black room, warm
+ * grey text, and a single amber accent standing in for the safelight. Nothing
+ * else is allowed to be colourful, because the photos are.
+ *
+ * There is deliberately no light theme. The gallery and the slideshow are the
+ * product and both get looked at in a dim room; a light variant would be a
+ * second design to keep in step for a case that never arrives.
+ */
+
+@theme {
+  /* The room. Not #000 — a warm black, so skin tones beside it do not read
+     cold by contrast. */
+  --color-ground: #0a0908;
+  --color-surface: #16130f;
+  --color-surface-lift: #201b16;
+  --color-edge: #2e2721;
+  --color-edge-bright: #453b31;
+
+  /* Paper, not pixels. Pure #fff against a warm black glares, and makes the
+     highlights in a photograph look grey by comparison. */
+  --color-ink: #f4efe6;
+  --color-ink-dim: #a89f92;
+  --color-ink-faint: #6f665b;
+
+  /* The safelight. One accent, used sparingly — an interface that glows
+     everywhere is an interface competing with the photographs. */
+  --color-safelight: #f0a13a;
+  --color-safelight-deep: #b8681a;
+
+  /* Warmed towards the room so it belongs to the same world. */
+  --color-alarm: #e8674f;
+  --color-alarm-deep: #4a1d16;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/**
+ * Grain, in the background layer — never an overlay.
+ *
+ * This is the entire reason it lives in `background-image` rather than a fixed
+ * ::before above the content: an overlay covering the viewport covers the
+ * photographs too, and the promise is that what the host sees on screen is what
+ * is in the file they download. As a background it sits behind everything by
+ * construction, so it textures the room and cannot touch a photo. There is no
+ * z-index for anyone to get wrong later.
+ *
+ * `fixed` because grain belongs to the surface being looked at, not to the
+ * content — it must not slide about as the page scrolls.
+ *
+ * The two numbers are measured, not taste. `feTurbulence` with `fractalNoise`
+ * emits noise on all four channels including alpha, so the rect renders as
+ * roughly half-opaque mid-grey — at the 0.4 this started on, it lifted the room
+ * from #0a0908 to a washed-out grey-brown and there was no darkroom left. The
+ * feColorMatrix kills the colour noise (otherwise the grain is faintly rainbow,
+ * which no film stock has ever been), and 0.055 is where the measured page
+ * background lands back on the token within a couple of levels.
+ */
+body {
+  background-color: var(--color-ground);
+  background-image:
+    radial-gradient(
+      ellipse 90% 60% at 50% -10%,
+      color-mix(in srgb, var(--color-safelight) 6%, transparent),
+      transparent 70%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+  background-repeat: no-repeat, repeat;
+  color: var(--color-ink);
+  /* The bug this replaces: create-next-app hard-codes Arial here, which
+     overrode the Geist that next/font was loading and that @theme was mapping
+     into --font-sans. Both fonts were fetched on every visit and neither was
+     ever shown. */
+  font-family: var(--font-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Grain is texture, not something to fight through. Anyone who has asked their
+   OS to calm things down gets the flat room. */
+@media (prefers-reduced-motion: reduce), (prefers-contrast: more) {
+  body {
+    background-image: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/**
+ * A focus ring that survives a near-black theme.
+ *
+ * The browser default is a thin dark outline that disappears against #0a0908,
+ * which would leave the capture screen unusable by keyboard — and the shutter
+ * is the one control in this app nobody can afford to lose.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-safelight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/**
+ * Counts, countdowns and quotas: numbers that change in place.
+ *
+ * Tabular figures stop "19 of 20 shots left" jittering as it ticks down, and
+ * mono is the darkroom's own voice for anything measured.
+ */
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
