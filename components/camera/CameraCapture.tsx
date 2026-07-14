@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import type { FlushOutcome } from "@/lib/offline/flush"
+import { type UploadQueue, useUploadQueue } from "@/lib/offline/useUploadQueue"
+
 import { CapturePreview } from "./CapturePreview"
 import { UploadProgress } from "./UploadProgress"
 import {
@@ -67,9 +70,41 @@ export function CameraCapture({
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [uploadsUsed, setUploadsUsed] = useState(initialUploadCount)
+  /**
+   * The server has said no more, for reasons of its own.
+   *
+   * Kept apart from uploadsUsed, which counts shots that really went up. The
+   * two are usually the same thing — you run out because you shot everything —
+   * but not always: the host can lower the limit under a guest mid-event. Its
+   * own flag, because the alternative is winding uploadsUsed up to the limit
+   * as a signal, and then every sentence built from that number is a lie about
+   * how many photos the host is holding.
+   */
+  const [quotaSpent, setQuotaSpent] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const remaining = Math.max(0, maxUploadsPerGuest - uploadsUsed)
+  const queue = useUploadQueue(
+    guestToken,
+    useCallback(
+      (outcome: FlushOutcome) => {
+        setUploadsUsed((used) => used + outcome.uploaded)
+        // Believe the server over our arithmetic. Without this the refused
+        // shot's slot is handed straight back and the guest is refused all
+        // over again.
+        if (outcome.rejected.some((error) => error.code === "upload_quota_exceeded")) {
+          setQuotaSpent(true)
+        }
+      },
+      [],
+    ),
+  )
+
+  // A waiting shot is a spent shot. It is not up yet, but the guest took it and
+  // meant to keep it, so offering the slot a second time would be offering
+  // something we cannot deliver — the server will refuse it on the way out.
+  const remaining = quotaSpent
+    ? 0
+    : Math.max(0, maxUploadsPerGuest - uploadsUsed - queue.queuedCount)
   const outOfShots = remaining === 0
 
   // --- Live preview ---------------------------------------------------------
@@ -268,15 +303,23 @@ export function CameraCapture({
     } catch (error) {
       if (error instanceof UploadRejectedError) {
         setUploadError(error.message)
-        // The server is the authority on the count. If it says the quota is
-        // spent, believe it over our mirror — the guest may have shot from a
-        // second tab, or the host may have lowered the limit mid-event.
-        if (error.code === "upload_quota_exceeded") setUploadsUsed(maxUploadsPerGuest)
+        // The server is the authority. If it says the quota is spent, believe
+        // it over our mirror — the guest may have shot from a second tab, or
+        // the host may have lowered the limit mid-event.
+        if (error.code === "upload_quota_exceeded") setQuotaSpent(true)
       } else if (error instanceof UploadNetworkError) {
-        // Phase 4 queues this instead. Until then the shot is still in memory
-        // and Keep can simply be tapped again, so say that rather than
-        // pretending it is saved.
-        setUploadError("No connection. Your shot is still here — try again.")
+        const saved = await queue.queue(capture)
+        if (saved) {
+          // Nothing to apologise for and nothing for the guest to do. The shot
+          // is on the phone, the counter already treats it as spent, and the
+          // notice below the shutter says the rest. Back to the camera.
+          setCapture(null)
+        } else {
+          // The queue could not take it — no IndexedDB, or no room left on the
+          // device. The shot is still in memory and Keep still works, so say
+          // exactly that instead of pretending it is safe.
+          setUploadError("No connection, and this phone cannot hold the shot. Try again.")
+        }
       } else {
         setUploadError("Something went wrong. Try again.")
       }
@@ -300,9 +343,18 @@ export function CameraCapture({
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <p className="text-lg font-medium">That was your last shot.</p>
         <p className="mt-2 max-w-xs text-sm text-neutral-400">
-          All {maxUploadsPerGuest} are in. The host has them — you will see the
-          result when they reveal it.
+          {/* Both halves are counted from what actually went up, never from
+              the limit. "The host has them" is only true once they are up, and
+              the number beside it is only true if it is the number we sent —
+              a guest whose last shot was refused has not delivered twenty
+              photos, however spent their allowance is. */}
+          {queue.queuedCount > 0
+            ? "The last of them are still on your phone, waiting for signal."
+            : `All ${uploadsUsed} are in. The host has them — you will see the result when they reveal it.`}
         </p>
+        <div className="mt-4 w-full max-w-xs">
+          <QueuedShots queue={queue} />
+        </div>
       </div>
     )
   }
@@ -329,6 +381,7 @@ export function CameraCapture({
             {uploadError}
           </p>
         )}
+        <QueuedShots queue={queue} />
       </div>
     )
   }
@@ -337,7 +390,17 @@ export function CameraCapture({
     <div className="flex flex-1 flex-col">
       <div className="relative flex-1 overflow-hidden rounded-lg bg-black">
         <video
-          ref={videoRef}
+          // Not a plain ref. Previewing a shot unmounts this element, so the
+          // one that comes back afterwards is a different node with nothing
+          // attached — and the effect that opened the camera only runs when
+          // facingMode changes, so it never reattaches. The stream is still
+          // running the whole time; it is simply pointed at a node that is no
+          // longer in the document. Without this the camera dies after the
+          // first shot and a guest with twenty shots gets one.
+          ref={(element) => {
+            videoRef.current = element
+            if (element && streamRef.current) element.srcObject = streamRef.current
+          }}
           // playsInline keeps iOS from hijacking the stream into a fullscreen
           // player; muted is what allows autoplay at all.
           playsInline
@@ -415,6 +478,73 @@ export function CameraCapture({
           {mode === "video" && ` · up to ${MAX_VIDEO_SECONDS}s`}
         </p>
       </div>
+
+      <QueuedShots queue={queue} />
+    </div>
+  )
+}
+
+/**
+ * What the phone is still holding.
+ *
+ * Renders nothing in the ordinary case, which is the point: a guest with
+ * signal should never learn that any of this exists. It appears when a shot is
+ * waiting — to promise it is safe — and when one was refused for good, because
+ * that is the only moment a queued shot can disappear and the guest is owed
+ * the reason.
+ */
+function QueuedShots({ queue }: { queue: UploadQueue }) {
+  if (queue.queuedCount === 0 && queue.rejected.length === 0) return null
+
+  const one = queue.queuedCount === 1
+  // Twenty shots refused for the same spent quota is one thing to say, not
+  // twenty. The count is already carried by the heading.
+  const reasons = [...new Set(queue.rejected.map((error) => error.message))]
+
+  return (
+    <div className="mt-3 space-y-2">
+      {reasons.length > 0 && (
+        <div className="rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
+          <p className="font-medium">
+            {queue.rejected.length === 1
+              ? "A saved shot could not be kept."
+              : `${queue.rejected.length} saved shots could not be kept.`}
+          </p>
+          <ul className="mt-1 space-y-0.5 text-xs text-red-300/80">
+            {reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={queue.dismissRejected}
+            className="mt-2 text-xs underline"
+          >
+            Got it
+          </button>
+        </div>
+      )}
+
+      {queue.queuedCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-900/60 px-3 py-2">
+          <p className="text-xs text-neutral-400">
+            {queue.flushing
+              ? `Sending ${queue.queuedCount} saved ${one ? "shot" : "shots"}…`
+              : `${queue.queuedCount} ${one ? "shot is" : "shots are"} safe on your phone — ${
+                  one ? "it goes" : "they go"
+                } up as soon as you have signal.`}
+          </p>
+          {!queue.flushing && (
+            <button
+              type="button"
+              onClick={queue.flushNow}
+              className="shrink-0 rounded border border-neutral-700 px-2.5 py-1 text-xs"
+            >
+              Try now
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

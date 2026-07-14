@@ -20,19 +20,20 @@ party, or to download and share.
 
 ## Status
 
-Phase 3 of 5. The whole arc works end to end: create an event with your own
+Phase 4 of 5. The whole arc works end to end: create an event with your own
 limits, share the QR, guests consent and shoot, nothing is visible to anyone,
 then you unlock — and the roll is yours to browse, run as a slideshow, or
-download as one ZIP.
+download as one ZIP. A shot taken where there is no signal waits on the phone
+and goes up on its own.
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Schema, tokens, join + consent | Done |
 | 2 | Camera capture, upload, EXIF strip | Done |
 | 3 | Unlock, host gallery, slideshow, ZIP download | Done |
-| 4a | Offline capture queue | Next |
+| 4a | Offline capture queue | Done |
 | 4b | Retention cron, deletion warnings | Done |
-| 5 | Film-look UI pass | Planned |
+| 5 | Film-look UI pass | Next |
 
 ## Stack
 
@@ -88,6 +89,27 @@ That matters more than its size suggests — `confirm` never ran on it, so its
 EXIF was never stripped. It is unreachable by anyone in the meantime, since
 nothing but a signed URL can read the bucket and none is ever minted for it.
 
+A shot that finds no network is written to IndexedDB rather than lost. The
+places people take the best photos — a cellar bar, a stone church, a marquee in
+a field — are the places with no bars, and a guest with twenty shots cannot be
+asked to check their signal before each one. What is stored is the capture, not
+the reservation: a signed upload URL expires in 60 seconds, so persisting one
+would persist rubbish. The queue then goes up on the `online` event, when the
+tab is looked at again, on the next page load, or when the guest taps the
+button — four triggers because no single one of them is honest on a phone
+drifting between saturated venue wifi and 4G.
+
+Sending a queued shot twice would spend two of the guest's allowance on one
+photo, so two things stop it. A flusher claims an item inside a single
+IndexedDB transaction, which serialises two tabs racing each other; and the
+queue records the mediaId only once the bytes are provably in the bucket, so a
+resumed upload knows whether to start over from init (nothing was spent, the
+orphan is swept within the day) or to retry confirm alone (which the server
+answers idempotently). The one case left is a flush killed mid-upload and
+reclaimed after its five-minute lease while the original is somehow still
+running — narrower than the soft quota cap below, and bounded by the same
+server-side counters.
+
 Quotas are enforced by the database, not by the route. Each counter moves in a
 single statement that carries its own limit (`update … where upload_count <
 max_uploads_per_guest`), so a check cannot go stale between reading and
@@ -125,6 +147,19 @@ delete. `scripts/verify-retention.mjs` runs the real cron route against
 backdated events: every deletion it checks is paired with a survival check,
 because a sweep that deleted every event on earth would pass a test that only
 looks at the one it was supposed to take.
+
+There is no service worker, so a queued shot goes up while the tab is alive or
+when it is opened again — not while the browser is closed. Background Sync
+would cover that last case on Chrome and never on iOS, and it cannot reuse the
+upload path: service workers have no `XMLHttpRequest`, which is what the upload
+uses to report progress. It would therefore mean a second, hand-written copy of
+the code that spends guests' quota, drifting out of step with the first. The
+four page-driven triggers cover every browser instead of adding a fifth that
+covers one.
+
+There is no web app manifest either. Its only job would be Add to Home Screen,
+and the promise on the tin is that a guest scans a QR and shoots — nobody
+installs an app for one evening.
 
 Known and accepted for the MVP: a guest can clear storage or switch devices to
 get a fresh quota. Without accounts this is a soft cap backed by a host-visible
@@ -174,6 +209,27 @@ node --env-file=.env.local scripts/verify-retention.mjs
 Each must exit 0. They create their own events and delete them afterwards.
 `verify-retention.mjs` additionally needs `CRON_SECRET` set to the same value the
 dev server was started with — it calls the cron route the way Vercel does.
+
+### What no script here can prove
+
+The offline queue has no verification script, because the thing worth proving
+about it only exists in a browser: IndexedDB, `XMLHttpRequest`, the `online`
+event, a real camera. A Node harness for it would be four shims deep and would
+mostly test the shims. It was verified instead by driving the real capture
+screen in Chrome with the network cut at the CDP level — capture offline, watch
+the server stay empty, reconnect, watch the shot arrive confirmed and stripped
+and counted exactly once.
+
+Three things still need a real device and are not claimed to work until someone
+checks them:
+
+- **iOS Safari.** It is the phone half the guests will be holding and the only
+  engine whose IndexedDB and background-tab behaviour we are trusting on
+  reputation. Capture in airplane mode, lock the phone, come back, reconnect.
+- **Real video sizes.** `videoBitsPerSecond` is a hint, not a contract. The
+  ~5 MB estimate the 15s cap rests on has never met an actual phone.
+- **Video through the queue.** Only photos have made the offline round trip; a
+  40 MB clip is the same code path with a much longer PUT.
 
 ### If routes 404 in dev that exist on disk
 

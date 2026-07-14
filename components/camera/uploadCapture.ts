@@ -8,6 +8,21 @@
  * lands in the bucket without a successful confirm is invisible to everyone —
  * no signed URL is ever minted for it — and the nightly sweep takes it once it
  * is an hour old, so a half-finished upload leaves nothing behind.
+ *
+ * The steps are exposed separately as well as composed, because the offline
+ * queue has to be able to stop between them and resume later. The seam sits
+ * after the PUT rather than after init, and that placement is the whole reason
+ * a queued shot cannot cost a guest two of their allowance:
+ *
+ *   - Bytes not in the bucket yet? The reservation is worthless to a retry —
+ *     a signed upload URL lives 60 seconds — and it is also harmless: no
+ *     counter has moved, and confirm refuses a row whose object is missing.
+ *     So the retry starts over from init and the orphan is swept within a day.
+ *   - Bytes already in the bucket? That work must not be thrown away, and it
+ *     need not be: confirm is idempotent server-side, so a retry that cannot
+ *     tell whether the first confirm landed can simply ask again.
+ *
+ * lib/offline/flush.ts is the only caller that needs the distinction.
  */
 
 export type Capture = {
@@ -108,11 +123,19 @@ function putWithProgress(
   })
 }
 
-export async function uploadCapture(
+/**
+ * Reserve a shot and get the bytes into the bucket.
+ *
+ * Resolves with the mediaId only once the PUT has actually landed, which is
+ * what makes the returned value safe to persist: it means "the bytes are up,
+ * only confirm is left". A mediaId that escaped this function on its way to
+ * disk would be a promise nobody can keep.
+ */
+export async function reserveAndPut(
   guestToken: string,
   capture: Capture,
   onProgress?: (fraction: number) => void,
-): Promise<void> {
+): Promise<string> {
   const initResponse = await postJson(`/api/events/${guestToken}/upload/init`, {
     mediaType: capture.mediaType,
     mimeType: capture.mimeType,
@@ -129,8 +152,29 @@ export async function uploadCapture(
   const contentType = capture.mimeType.split(";")[0]!.trim()
   await putWithProgress(uploadUrl, capture.blob, contentType, onProgress)
 
+  return mediaId
+}
+
+/**
+ * Keep the shot: strip it, count it, make it real.
+ *
+ * Safe to call twice for the same mediaId — the server answers a second
+ * confirm with `alreadyConfirmed` rather than an error, and refuses to move
+ * the counters again. That is what lets a retry ask "did it land?" by simply
+ * trying once more.
+ */
+export async function confirmUpload(guestToken: string, mediaId: string): Promise<void> {
   const confirmResponse = await postJson(`/api/events/${guestToken}/upload/confirm`, {
     mediaId,
   })
   if (!confirmResponse.ok) throw await rejectionFrom(confirmResponse)
+}
+
+export async function uploadCapture(
+  guestToken: string,
+  capture: Capture,
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  const mediaId = await reserveAndPut(guestToken, capture, onProgress)
+  await confirmUpload(guestToken, mediaId)
 }
