@@ -172,7 +172,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      confirm_media_upload: {
+        Args: {
+          p_event_id: string
+          p_exif_stripped: boolean
+          p_guest_session_id: string
+          p_media_id: string
+          p_size_bytes: number
+        }
+        Returns: undefined
+      }
+      reserve_media_upload: {
+        Args: {
+          p_duration_seconds?: number
+          p_event_id: string
+          p_guest_session_id: string
+          p_media_type: string
+          p_mime_type: string
+          p_size_bytes: number
+          p_storage_path: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

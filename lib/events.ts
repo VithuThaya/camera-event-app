@@ -1,5 +1,6 @@
 import "server-only"
 
+import { readGuestSession } from "./session"
 import { supabaseAdmin } from "./supabase/server"
 import type { EventRow } from "./supabase/types"
 import { isWellFormedGuestToken } from "./tokens"
@@ -44,6 +45,51 @@ export async function countGuestSessions(eventId: string): Promise<number> {
     return Number.POSITIVE_INFINITY
   }
   return count ?? 0
+}
+
+/**
+ * Who is allowed to upload, resolved in one place.
+ *
+ * Both upload routes need the same four facts to line up: the token names a
+ * live event, the caller carries a session cookie for *that* event, the row
+ * behind the cookie still exists, and consent was actually recorded. Spreading
+ * these across two routes is how one of them ends up missing a check.
+ *
+ * Everything here fails as "not found" rather than explaining which condition
+ * failed: an attacker holding a guest token learns nothing about whether an
+ * event exists, and a guest with a stale cookie gets the same answer either
+ * way. The pages redirect to the join screen, which is where a real guest with
+ * a stale cookie needs to go anyway.
+ */
+export type ConsentedGuest = { event: EventRow; guestSessionId: string }
+
+export async function findConsentedGuest(
+  guestToken: string,
+): Promise<ConsentedGuest | null> {
+  const event = await findActiveEventByGuestToken(guestToken)
+  if (!event) return null
+
+  const session = await readGuestSession(event.id)
+  if (!session) return null
+
+  const { data, error } = await supabaseAdmin()
+    .from("guest_sessions")
+    .select("id, consent_ack_at")
+    .eq("id", session.guestSessionId)
+    .eq("event_id", event.id)
+    .maybeSingle()
+
+  if (error) {
+    console.error("Failed to load guest session:", error)
+    // Fail closed: an unreadable session is not a consented one.
+    return null
+  }
+  // A cookie whose row is gone is not a session, and a session that never
+  // acknowledged the camera notice must not be able to upload — that consent
+  // record is the entire GDPR basis for holding the photo.
+  if (!data?.consent_ack_at) return null
+
+  return { event, guestSessionId: data.id }
 }
 
 /**

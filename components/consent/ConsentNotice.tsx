@@ -70,8 +70,10 @@ export function ConsentNotice({
           Only the host can view and download the roll after the unlock. They
           decide how to show it — a slideshow at the party, or shared later.
         </Point>
-        <Point title="We strip location data">
-          GPS metadata is removed from every photo before it is stored.
+        <Point title="We strip location data from photos">
+          GPS and camera details are removed from every photo on our servers
+          before it is stored. Video is different: it records sound, and we do
+          not strip its metadata yet — shoot a photo if that matters to you.
         </Point>
         <Point title={`Everything is deleted after ${retentionDays} days`}>
           Counted from the unlock. After that it is gone from our servers for

@@ -74,3 +74,111 @@ export const createEventSchema = z.object({
 })
 
 export type CreateEventInput = z.infer<typeof createEventSchema>
+
+/**
+ * Media bounds.
+ *
+ * Everything here is re-checked server-side against what actually landed in
+ * the bucket. A client that lies at init only gets as far as confirm, where
+ * the numbers come from Storage rather than from the request body.
+ */
+export const MEDIA_LIMITS = {
+  photo: {
+    mimeTypes: ["image/jpeg"],
+    maxBytes: 12 * MIB,
+  },
+  video: {
+    // Safari records mp4; Chrome and Firefox record webm. Supporting only one
+    // would silently break capture on roughly half the phones at any party.
+    mimeTypes: ["video/webm", "video/mp4"],
+    // Mirrors the bucket's file_size_limit. The bucket is the real ceiling —
+    // this copy just turns a rejection into a message we control.
+    maxBytes: 40 * MIB,
+    maxDurationSeconds: 15,
+    /**
+     * What we accept at the boundary. The product cap is 15s enforced by a
+     * hard MediaRecorder stop, but container duration is rounded by the
+     * encoder, so a clip cut at exactly 15s can report 15.04. Rejecting that
+     * would fail an upload the guest did nothing wrong to produce. Matches the
+     * CHECK constraint in 0001_init_schema.sql.
+     */
+    maxDurationToleranceSeconds: 16,
+  },
+} as const
+
+export const uploadInitSchema = z
+  .object({
+    mediaType: z.enum(["photo", "video"]),
+    mimeType: z.string().min(1).max(100),
+    sizeBytes: z.number().int().positive(),
+    durationSeconds: z.number().positive().nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    // Compare on the bare type: the client legitimately sends codec parameters.
+    const mime = value.mimeType.split(";")[0]!.trim().toLowerCase()
+
+    if (value.mediaType === "photo") {
+      if (!MEDIA_LIMITS.photo.mimeTypes.includes(mime as "image/jpeg")) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["mimeType"],
+          message: `Photos must be one of: ${MEDIA_LIMITS.photo.mimeTypes.join(", ")}`,
+        })
+      }
+      if (value.sizeBytes > MEDIA_LIMITS.photo.maxBytes) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sizeBytes"],
+          message: "Photo is too large",
+        })
+      }
+      // The database enforces this too (duration_only_for_video). Catching it
+      // here keeps a nonsense payload from reaching the bucket at all.
+      if (value.durationSeconds != null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["durationSeconds"],
+          message: "Photos carry no duration",
+        })
+      }
+      return
+    }
+
+    if (!MEDIA_LIMITS.video.mimeTypes.includes(mime as "video/webm" | "video/mp4")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["mimeType"],
+        message: `Videos must be one of: ${MEDIA_LIMITS.video.mimeTypes.join(", ")}`,
+      })
+    }
+    if (value.sizeBytes > MEDIA_LIMITS.video.maxBytes) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sizeBytes"],
+        message: "Video is too large",
+      })
+    }
+    if (value.durationSeconds == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["durationSeconds"],
+        message: "Videos must report a duration",
+      })
+    } else if (
+      value.durationSeconds > MEDIA_LIMITS.video.maxDurationToleranceSeconds
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["durationSeconds"],
+        message: `Videos must be at most ${MEDIA_LIMITS.video.maxDurationSeconds} seconds`,
+      })
+    }
+  })
+
+export type UploadInitInput = z.infer<typeof uploadInitSchema>
+
+export const uploadConfirmSchema = z.object({
+  mediaId: z.uuid(),
+})
+
+export type UploadConfirmInput = z.infer<typeof uploadConfirmSchema>

@@ -1,14 +1,19 @@
-import { notFound, redirect } from "next/navigation"
+import { redirect } from "next/navigation"
 
-import { findActiveEventByGuestToken } from "@/lib/events"
-import { readGuestSession } from "@/lib/session"
+import { CameraCapture } from "@/components/camera/CameraCapture"
+import { findConsentedGuest } from "@/lib/events"
 import { supabaseAdmin } from "@/lib/supabase/server"
 
 /**
- * The camera. Phase 2 fills this in; the gate around it is already real.
+ * The camera.
  *
  * Consent is re-checked here rather than trusted from the referring page,
- * because this URL is guessable once someone has the guest token.
+ * because this URL is guessable to anyone holding the guest token — and the
+ * consent record is the entire lawful basis for keeping a photo of someone.
+ *
+ * Anyone without a consented session goes back to the join screen rather than
+ * a 404: the common cause is a real guest whose cookie expired, and the join
+ * screen is exactly where they need to land.
  */
 
 export default async function CapturePage({
@@ -18,36 +23,31 @@ export default async function CapturePage({
 }) {
   const { guestToken } = await params
 
-  const event = await findActiveEventByGuestToken(guestToken)
-  if (!event) notFound()
+  const guest = await findConsentedGuest(guestToken)
+  if (!guest) redirect(`/e/${guestToken}`)
 
-  const session = await readGuestSession(event.id)
-  if (!session) redirect(`/e/${guestToken}`)
-
+  // The starting count only. From here the component tracks it client-side for
+  // display, while every upload is decided server-side against this same row.
   const { data } = await supabaseAdmin()
     .from("guest_sessions")
-    .select("upload_count, consent_ack_at")
-    .eq("id", session.guestSessionId)
+    .select("upload_count")
+    .eq("id", guest.guestSessionId)
     .maybeSingle()
 
-  // A session whose row is gone (event deleted, or a stale cookie) is not a
-  // session. Send them back through the door.
-  if (!data?.consent_ack_at) redirect(`/e/${guestToken}`)
-
-  const remaining = Math.max(0, event.max_uploads_per_guest - data.upload_count)
-
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="text-2xl font-semibold">{event.name}</h1>
-      <p className="mt-2 text-sm text-neutral-400">
-        {remaining} of {event.max_uploads_per_guest} shots left
-      </p>
-
-      <div className="mt-8 rounded border border-dashed border-neutral-700 p-8 text-center">
-        <p className="text-sm text-neutral-500">
-          Camera arrives in Phase 2 — capture, local preview, confirm, upload.
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-4 py-6">
+      <header className="mb-4">
+        <h1 className="text-lg font-semibold">{guest.event.name}</h1>
+        <p className="text-xs text-neutral-500">
+          Nobody sees these until the host reveals them.
         </p>
-      </div>
+      </header>
+
+      <CameraCapture
+        guestToken={guestToken}
+        maxUploadsPerGuest={guest.event.max_uploads_per_guest}
+        initialUploadCount={data?.upload_count ?? 0}
+      />
     </main>
   )
 }
