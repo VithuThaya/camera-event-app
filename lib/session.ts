@@ -4,18 +4,24 @@ import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
 
 /**
- * Guest and host sessions.
+ * Guest sessions.
  *
- * There are no accounts. A session is a signed cookie holding the event it
- * belongs to and, for guests, which guest_sessions row is theirs. Two claims
- * carry the security weight:
+ * There are no accounts. A guest session is a signed cookie naming the event it
+ * belongs to and which guest_sessions row is theirs. Two claims carry the
+ * security weight:
  *
- *   role — a guest cookie must never satisfy a host check. The guest link is
- *          handed to everyone at the party; the host link is the only thing
- *          guarding unlock and delete.
+ *   role — this cookie is a guest's and nothing else's. Nothing in the app
+ *          accepts it as anything more.
  *   eid  — a cookie minted for one event must not be replayable against
  *          another. Every read is told which event is being accessed and
  *          rejects a mismatch.
+ *
+ * There is deliberately no host session. The host token in the URL is the
+ * host's credential — see lib/host.ts for why a cookie beside it would add CSRF
+ * surface and outlive its tab without adding a second factor. Phase 1 shipped
+ * setHostSession/readHostSession before any host route existed; Phase 3 removed
+ * them unused rather than leave them lying around for someone to wire up in the
+ * belief that they gate something.
  */
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
@@ -45,10 +51,6 @@ function guestCookieName(eventId: string): string {
   return `ce_g_${eventId}`
 }
 
-function hostCookieName(eventId: string): string {
-  return `ce_h_${eventId}`
-}
-
 function cookieOptions() {
   return {
     httpOnly: true,
@@ -72,7 +74,6 @@ function cookieOptions() {
 }
 
 export type GuestSession = { eventId: string; guestSessionId: string }
-export type HostSession = { eventId: string }
 
 async function sign(claims: Record<string, string>): Promise<string> {
   return new SignJWT(claims)
@@ -121,25 +122,4 @@ export async function readGuestSession(
   if (typeof payload.sid !== "string") return null
 
   return { eventId, guestSessionId: payload.sid }
-}
-
-export async function setHostSession(session: HostSession): Promise<void> {
-  const token = await sign({ role: "host", eid: session.eventId })
-  const store = await cookies()
-  store.set(hostCookieName(session.eventId), token, cookieOptions())
-}
-
-export async function readHostSession(
-  eventId: string,
-): Promise<HostSession | null> {
-  const store = await cookies()
-  const raw = store.get(hostCookieName(eventId))?.value
-  if (!raw) return null
-
-  const payload = await verify(raw)
-  if (!payload) return null
-  if (payload.role !== "host") return null
-  if (payload.eid !== eventId) return null
-
-  return { eventId }
 }

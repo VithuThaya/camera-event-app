@@ -182,3 +182,81 @@ export const uploadConfirmSchema = z.object({
 })
 
 export type UploadConfirmInput = z.infer<typeof uploadConfirmSchema>
+
+/**
+ * The reveal, as the host can drive it.
+ *
+ * Three named intents rather than a free-form patch of unlock_at and
+ * is_unlocked. Those two columns have to stay consistent with each other and
+ * with unlocked_at, and letting a request set them individually is how they end
+ * up disagreeing — an event claiming to be unlocked with no record of when,
+ * which the database's own CHECK already refuses.
+ *
+ *   now      — reveal immediately, stamping the moment retention counts from.
+ *   schedule — set or move a future reveal. Only while still locked.
+ *   cancel   — drop a scheduled reveal, back to unlocking by hand.
+ */
+export const unlockSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("now") }),
+  z.object({
+    mode: z.literal("schedule"),
+    // A past timestamp would mean "already revealed", which is what mode:"now"
+    // is for. Accepting it here would unlock the event through a route the host
+    // believes only schedules one.
+    unlockAt: z.iso
+      .datetime()
+      .refine((value) => new Date(value).getTime() > Date.now(), {
+        message: "unlockAt must be in the future",
+      }),
+  }),
+  z.object({ mode: z.literal("cancel") }),
+])
+
+export type UnlockInput = z.infer<typeof unlockSchema>
+
+/**
+ * Settings the host can change after creation.
+ *
+ * Deliberately absent: guest_token, host_token, storage_used_bytes, and
+ * anything about the unlock. Tokens are identity and cannot be rotated — the
+ * guest link is already on a QR code taped to a table. storage_used_bytes is
+ * the database's own running total and must never be settable from a request.
+ * The unlock has its own route because it is not a setting, it is an event.
+ */
+export const hostSettingsSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  maxGuests: z
+    .number()
+    .int()
+    .min(EVENT_LIMITS.maxGuests.min)
+    .max(EVENT_LIMITS.maxGuests.max),
+  maxUploadsPerGuest: z
+    .number()
+    .int()
+    .min(EVENT_LIMITS.maxUploadsPerGuest.min)
+    .max(EVENT_LIMITS.maxUploadsPerGuest.max),
+  maxStorageBytes: z
+    .number()
+    .int()
+    .min(EVENT_LIMITS.maxStorageBytes.min)
+    .max(EVENT_LIMITS.maxStorageBytes.max),
+  retentionDays: z
+    .number()
+    .int()
+    .min(EVENT_LIMITS.retentionDays.min)
+    .max(EVENT_LIMITS.retentionDays.max),
+})
+
+export type HostSettingsInput = z.infer<typeof hostSettingsSchema>
+
+/**
+ * Deleting an event is the one irreversible thing in this app, and the host
+ * token alone is enough to do it. Requiring the event's own name back means a
+ * mistyped or forged request fails: whoever sends it has to know what they are
+ * destroying, not merely hold the link.
+ */
+export const deleteEventSchema = z.object({
+  confirmName: z.string().min(1).max(120),
+})
+
+export type DeleteEventInput = z.infer<typeof deleteEventSchema>
