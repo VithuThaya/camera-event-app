@@ -27,31 +27,17 @@ export default async function HostGalleryPage({
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <Link href={`/host/${hostToken}`} className="text-sm text-neutral-400 underline">
-            Back
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold">{event.name}</h1>
-        </div>
-
-        <div className="flex shrink-0 gap-2">
-          <Link
-            href={`/host/${hostToken}/slideshow`}
-            className="rounded border border-neutral-700 px-3 py-2 text-sm"
-          >
-            Slideshow
-          </Link>
-          {/* A plain link, not a fetch: the ZIP is streamed and can run to
-              gigabytes, so it belongs to the browser's download manager rather
-              than to a blob a tab would have to hold in memory first. */}
-          <a
-            href={`/api/host/${hostToken}/download-all`}
-            className="rounded bg-white px-3 py-2 text-sm font-medium text-black"
-          >
-            Download all
-          </a>
-        </div>
+      {/* No actions here. Slideshow and Download live in GalleryGrid, which is
+          the thing the route tells whether the roll is open — this page must not
+          learn that a second way. See the note at the top of the file. */}
+      <div className="mb-6 min-w-0">
+        <Link
+          href={`/host/${hostToken}`}
+          className="text-sm text-ink-faint underline underline-offset-4 transition-colors hover:text-ink-dim"
+        >
+          Back
+        </Link>
+        <h1 className="mt-2 truncate text-2xl font-semibold">{event.name}</h1>
       </div>
 
       <GalleryGrid hostToken={hostToken} />

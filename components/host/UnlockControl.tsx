@@ -3,6 +3,9 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
+import { Alert } from "@/components/ui/Alert"
+import { Button } from "@/components/ui/Button"
+import { Panel } from "@/components/ui/Panel"
 import { useMoment } from "@/lib/useMoment"
 import type { HostDashboard } from "@/lib/host"
 
@@ -62,9 +65,9 @@ export function UnlockControl({
 
   if (unlock.revealed) {
     return (
-      <section className="rounded border border-neutral-800 p-4">
-        <h2 className="font-medium">Unlocked</h2>
-        <p className="mt-1 text-sm text-neutral-400">
+      <Panel>
+        <h2 className="font-medium text-ink">Unlocked</h2>
+        <p className="mt-1 text-sm text-ink-dim">
           {/* Each condition stays on the raw date, so the sentence keeps its
               shape across both render passes and only the moment arrives late. */}
           {unlock.unlockedAt
@@ -78,14 +81,14 @@ export function UnlockControl({
               : "The roll is open."}{" "}
           Guests can still add shots — the slideshow grows as the night goes on.
         </p>
-      </section>
+      </Panel>
     )
   }
 
   return (
-    <section className="rounded border border-neutral-800 p-4">
-      <h2 className="font-medium">Still sealed</h2>
-      <p className="mt-1 text-sm text-neutral-400">
+    <Panel>
+      <h2 className="font-medium text-ink">Still sealed</h2>
+      <p className="mt-1 text-sm text-ink-dim">
         {unlock.unlockAt
           ? opensAt
             ? `Opens by itself on ${opensAt}.`
@@ -94,52 +97,36 @@ export function UnlockControl({
         Nobody has seen a single shot — including you.
       </p>
 
-      {error && (
-        <p className="mt-3 rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <Alert className="mt-3">{error}</Alert>}
 
       <div className="mt-4">
         {confirming ? (
-          <div className="rounded border border-amber-700 bg-amber-950/40 p-3">
-            <p className="text-sm text-amber-100/90">
+          /* The only red on the dashboard, and it is spent here rather than on
+             "Unlock now" above — that button opens this dialog and undoes
+             nothing. This is the tap that cannot be taken back. */
+          <div className="rounded-md border border-alarm/35 bg-alarm-deep/25 p-3">
+            <p className="text-sm text-ink">
               This cannot be undone. Once the roll is open it stays open, and the
               deletion countdown starts from this moment.
             </p>
             <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setConfirming(false)}
-                className="flex-1 rounded border border-neutral-700 px-3 py-2 text-sm disabled:opacity-40"
-              >
+              <Button variant="quiet" disabled={busy} onClick={() => setConfirming(false)} className="flex-1">
                 Not yet
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => send({ mode: "now" })}
-                className="flex-1 rounded bg-amber-400 px-3 py-2 text-sm font-medium text-black disabled:opacity-40"
-              >
+              </Button>
+              <Button variant="danger" disabled={busy} onClick={() => send({ mode: "now" })} className="flex-1">
                 {busy ? "Opening…" : "Open it"}
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setConfirming(true)}
-            className="w-full rounded bg-white px-4 py-3 font-medium text-black disabled:opacity-40"
-          >
+          <Button disabled={busy} onClick={() => setConfirming(true)} className="w-full">
             Unlock now
-          </button>
+          </Button>
         )}
       </div>
 
-      <div className="mt-6 border-t border-neutral-800 pt-4">
-        <label className="block text-sm font-medium" htmlFor="unlock-at">
+      <div className="mt-6 border-t border-edge pt-4">
+        <label className="block text-sm font-medium text-ink" htmlFor="unlock-at">
           Or open it automatically
         </label>
         <div className="mt-2 flex gap-2">
@@ -148,7 +135,7 @@ export function UnlockControl({
             type="datetime-local"
             value={scheduleLocal}
             onChange={(event) => setScheduleLocal(event.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-sm text-ink"
           />
           <button
             type="button"
@@ -159,7 +146,7 @@ export function UnlockControl({
               // the one they had in mind when they typed it.
               send({ mode: "schedule", unlockAt: new Date(scheduleLocal).toISOString() })
             }
-            className="shrink-0 rounded border border-neutral-700 px-3 py-2 text-sm disabled:opacity-40"
+            className="shrink-0 rounded-md border border-edge px-3 py-2 text-sm text-ink transition-colors hover:border-edge-bright disabled:opacity-40"
           >
             Set
           </button>
@@ -169,12 +156,12 @@ export function UnlockControl({
             type="button"
             disabled={busy}
             onClick={() => send({ mode: "cancel" })}
-            className="mt-2 text-xs text-neutral-500 underline disabled:opacity-40"
+            className="mt-2 text-xs text-ink-faint underline underline-offset-2 transition-colors hover:text-ink-dim disabled:opacity-40"
           >
             Cancel the schedule and open it by hand instead
           </button>
         )}
       </div>
-    </section>
+    </Panel>
   )
 }

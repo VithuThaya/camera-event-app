@@ -3,6 +3,9 @@
 import QRCode from "qrcode"
 import { useState } from "react"
 
+import { Alert } from "@/components/ui/Alert"
+import { Button } from "@/components/ui/Button"
+import { Eyebrow } from "@/components/ui/Panel"
 import { EVENT_LIMITS, STORAGE_PRESETS } from "@/lib/validation"
 
 type CreatedEvent = {
@@ -84,8 +87,9 @@ export default function CreateEventPage() {
 
   return (
     <main className="mx-auto max-w-lg px-6 py-12">
-      <h1 className="text-2xl font-semibold">Create your event</h1>
-      <p className="mt-2 text-sm text-neutral-400">
+      <Eyebrow>New film</Eyebrow>
+      <h1 className="mt-2 text-2xl font-semibold">Create your event</h1>
+      <p className="mt-2 text-sm text-ink-dim">
         Set the rules once. Guests just scan and shoot.
       </p>
 
@@ -97,7 +101,7 @@ export default function CreateEventPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Anna & Max's Wedding"
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-ink placeholder:text-ink-faint"
           />
         </Field>
 
@@ -111,7 +115,7 @@ export default function CreateEventPage() {
             max={EVENT_LIMITS.maxGuests.max}
             value={maxGuests}
             onChange={(e) => setMaxGuests(Number(e.target.value))}
-            className="w-full"
+            className="w-full accent-safelight"
           />
         </Field>
 
@@ -125,7 +129,7 @@ export default function CreateEventPage() {
             max={EVENT_LIMITS.maxUploadsPerGuest.max}
             value={maxUploadsPerGuest}
             onChange={(e) => setMaxUploadsPerGuest(Number(e.target.value))}
-            className="w-full"
+            className="w-full accent-safelight"
           />
         </Field>
 
@@ -133,7 +137,7 @@ export default function CreateEventPage() {
           <select
             value={maxStorageBytes}
             onChange={(e) => setMaxStorageBytes(Number(e.target.value))}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-ink placeholder:text-ink-faint"
           >
             {STORAGE_PRESETS.map((preset) => (
               <option key={preset.bytes} value={preset.bytes}>
@@ -151,7 +155,7 @@ export default function CreateEventPage() {
             type="datetime-local"
             value={unlockAtLocal}
             onChange={(e) => setUnlockAtLocal(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-ink placeholder:text-ink-faint"
           />
         </Field>
 
@@ -165,23 +169,15 @@ export default function CreateEventPage() {
             max={90}
             value={retentionDays}
             onChange={(e) => setRetentionDays(Number(e.target.value))}
-            className="w-full"
+            className="w-full accent-safelight"
           />
         </Field>
 
-        {error && (
-          <p className="rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
+        {error && <Alert>{error}</Alert>}
 
-        <button
-          type="submit"
-          disabled={submitting || !name.trim()}
-          className="w-full rounded bg-white px-4 py-3 font-medium text-black disabled:opacity-40"
-        >
+        <Button type="submit" disabled={submitting || !name.trim()} className="w-full">
           {submitting ? "Creating…" : "Create event"}
-        </button>
+        </Button>
       </form>
     </main>
   )
@@ -190,14 +186,19 @@ export default function CreateEventPage() {
 function CreatedView({ created }: { created: CreatedEvent }) {
   return (
     <main className="mx-auto max-w-lg px-6 py-12">
-      <h1 className="text-2xl font-semibold">Your event is live</h1>
+      <Eyebrow>Loaded</Eyebrow>
+      <h1 className="mt-2 text-2xl font-semibold">Your event is live</h1>
 
       {/* The host link is shown exactly once and cannot be recovered: there is
           no account and no email to send it to. Saying so plainly here is the
-          only thing standing between the host and a lost event. */}
-      <div className="mt-6 rounded border border-amber-700 bg-amber-950/40 p-4">
-        <p className="font-medium text-amber-200">Save your host link now</p>
-        <p className="mt-1 text-sm text-amber-100/80">
+          only thing standing between the host and a lost event.
+          Alarm rather than the safelight, and above the guest link rather than
+          below it: this is the one screen in the app where doing nothing has a
+          permanent cost, and it has to be read before the host walks off with
+          the QR code they came for. */}
+      <div className="mt-6 rounded-lg border border-alarm/35 bg-alarm-deep/25 p-4">
+        <p className="font-medium text-alarm">Save your host link now</p>
+        <p className="mt-1 text-sm text-ink">
           It is the only way back into your event — to unlock the photos,
           download them, or change the rules. We cannot send it to you again or
           recover it if you lose it.
@@ -206,15 +207,19 @@ function CreatedView({ created }: { created: CreatedEvent }) {
       </div>
 
       <div className="mt-8">
-        <h2 className="font-medium">Share with your guests</h2>
-        <p className="mt-1 text-sm text-neutral-400">
+        <h2 className="font-medium text-ink">Share with your guests</h2>
+        <p className="mt-1 text-sm text-ink-dim">
           Anyone with this link or QR code can add shots. No app, no signup.
         </p>
-        {/* eslint-disable-next-line @next/next/no-img-element -- data: URL built in-browser; nothing for the image optimizer to fetch */}
+        {/* White by necessity, not by style: a QR is read by a camera that needs
+            real contrast, and this one gets printed and taped to a table.
+            eslint-disable-next-line @next/next/no-img-element -- data: URL built
+            in-browser; nothing for the image optimizer to fetch */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={created.qrDataUrl}
           alt="QR code linking guests to this event"
-          className="mt-4 w-64 rounded bg-white p-3"
+          className="mt-4 w-64 rounded-md bg-white p-3"
         />
         <CopyRow label="Guest link" value={created.guestUrl} />
       </div>
@@ -227,13 +232,15 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 
   return (
     <div className="mt-3">
-      <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
+      <p className="font-mono text-[0.6875rem] uppercase tracking-[0.15em] text-ink-faint">
+        {label}
+      </p>
       <div className="mt-1 flex gap-2">
         <input
           readOnly
           value={value}
           onFocus={(e) => e.currentTarget.select()}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-xs"
+          className="w-full rounded-md border border-edge bg-ground px-2 py-1 font-mono text-xs text-ink-dim"
         />
         <button
           type="button"
@@ -242,7 +249,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
             setCopied(true)
             setTimeout(() => setCopied(false), 1500)
           }}
-          className="shrink-0 rounded border border-neutral-700 px-3 py-1 text-xs"
+          className="shrink-0 rounded-md border border-edge px-3 py-1 text-xs text-ink transition-colors hover:border-edge-bright"
         >
           {copied ? "Copied" : "Copy"}
         </button>
@@ -262,10 +269,8 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium">{label}</span>
-      {hint && (
-        <span className="mt-0.5 block text-xs text-neutral-500">{hint}</span>
-      )}
+      <span className="text-sm font-medium text-ink">{label}</span>
+      {hint && <span className="mt-0.5 block text-xs text-ink-faint">{hint}</span>}
       <div className="mt-2">{children}</div>
     </label>
   )

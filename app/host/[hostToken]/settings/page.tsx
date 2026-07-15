@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { DangerZone } from "@/components/host/DangerZone"
 import { SettingsForm } from "@/components/host/SettingsForm"
+import { Alert } from "@/components/ui/Alert"
 import { buildHostDashboard, findEventByHostToken } from "@/lib/host"
 
 // See the dashboard page: these settings are live and must never come from a
@@ -23,21 +24,22 @@ export default async function HostSettingsPage({
   if (!dashboard) {
     return (
       <main className="mx-auto max-w-lg px-6 py-12">
-        <p className="text-sm text-red-400">
-          Could not load this event right now. Please refresh.
-        </p>
+        <Alert>Could not load this event right now. Please refresh.</Alert>
       </main>
     )
   }
 
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
-      <Link href={`/host/${hostToken}`} className="text-sm text-neutral-400 underline">
+      <Link
+        href={`/host/${hostToken}`}
+        className="text-sm text-ink-faint underline underline-offset-4 transition-colors hover:text-ink-dim"
+      >
         Back
       </Link>
 
       <h1 className="mt-4 text-2xl font-semibold">Settings</h1>
-      <p className="mt-1 text-sm text-neutral-500">
+      <p className="mt-1 text-sm text-ink-faint">
         Changes apply straight away — to guests already shooting as well as new ones.
       </p>
 
@@ -45,7 +47,10 @@ export default async function HostSettingsPage({
         <SettingsForm hostToken={hostToken} initial={dashboard} />
       </div>
 
-      <div className="mt-12 border-t border-neutral-800 pt-8">
+      {/* A wide gap and a rule. Deleting an event has nothing to do with editing
+          one, and the distance is the point — nobody should arrive at it by
+          simply carrying on downwards. */}
+      <div className="mt-12 border-t border-edge pt-8">
         <DangerZone hostToken={hostToken} eventName={dashboard.name} />
       </div>
     </main>

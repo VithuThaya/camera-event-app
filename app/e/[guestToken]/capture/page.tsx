@@ -35,12 +35,12 @@ export default async function CapturePage({
     .maybeSingle()
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-4 py-6">
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold">{guest.event.name}</h1>
-        <p className="text-xs text-neutral-500">
-          Nobody sees these until the host reveals them.
-        </p>
+    /* Tight padding and a one-line header: the viewfinder is the screen. Every
+       pixel here exists to give the camera as much of the phone as it can get. */
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-3 py-4">
+      <header className="mb-3 flex items-baseline justify-between gap-3">
+        <h1 className="truncate text-sm font-medium text-ink-dim">{guest.event.name}</h1>
+        <p className="shrink-0 text-xs text-ink-faint">Nobody sees these yet</p>
       </header>
 
       <CameraCapture

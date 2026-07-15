@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 
+import { Panel } from "@/components/ui/Panel"
 import { formatBytes } from "@/lib/format"
 import type { HostDashboard } from "@/lib/host"
 import { useMoment } from "@/lib/useMoment"
@@ -67,29 +68,34 @@ export function LiveStatsPanel({
   const deletedOn = useMoment(data.retention.deadline)
 
   return (
-    <section className="rounded border border-neutral-800 p-4">
+    <Panel>
       <div className="grid grid-cols-2 gap-4">
         <Stat label="Guests" value={`${usage.guestCount} / ${limits.maxGuests}`} />
         <Stat label="Shots taken" value={String(usage.shotCount)} />
       </div>
 
       <div className="mt-5">
-        <div className="flex justify-between text-xs text-neutral-500">
+        <div className="flex justify-between text-xs text-ink-faint">
           <span>Storage</span>
-          <span>
+          <span className="numeric">
             {formatBytes(usage.storageUsedBytes)} of {formatBytes(limits.maxStorageBytes)}
           </span>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-neutral-800">
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-lift">
+          {/* The bar only lights up when it is nearly full. Storage running out
+              is the one thing on this panel the host can still act on; the rest
+              of the time it is a fact, not a warning. */}
           <div
-            className={`h-full ${storagePercent > 90 ? "bg-amber-400" : "bg-neutral-400"}`}
+            className={`h-full transition-[width] duration-500 ${
+              storagePercent > 90 ? "bg-safelight" : "bg-ink-faint"
+            }`}
             style={{ width: `${storagePercent}%` }}
           />
         </div>
       </div>
 
       {data.retention.deadline && (
-        <p className="mt-5 text-xs text-neutral-500">
+        <p className="mt-5 text-xs text-ink-faint">
           {/* The condition stays on the raw date, so this sentence exists in
               both passes and only the moment inside it arrives late. */}
           {deletedOn
@@ -98,15 +104,20 @@ export function LiveStatsPanel({
           Download it before then — we keep no copy.
         </p>
       )}
-    </section>
+    </Panel>
   )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="font-mono text-[0.6875rem] uppercase tracking-[0.15em] text-ink-faint">
+        {label}
+      </p>
+      {/* .numeric, not just tabular-nums: these tick on a 20s poll, and a
+          proportional 1 is narrower than a 7 — the label under it would shuffle
+          sideways every time a guest arrived. */}
+      <p className="numeric mt-1 text-2xl font-semibold text-ink">{value}</p>
     </div>
   )
 }

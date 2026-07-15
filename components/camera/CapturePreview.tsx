@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo } from "react"
 
+import { Button } from "@/components/ui/Button"
+
 import type { Capture } from "./uploadCapture"
 
 /**
@@ -32,6 +34,10 @@ export function CapturePreview({
 
   return (
     <div className="flex flex-1 flex-col">
+      {/* Pure black here, not the room's warm near-black — deliberately against
+          the palette. object-contain letterboxes the shot, and a warm surround
+          shifts how the eye reads the skin tones inside it. The frame around a
+          photograph is the one place neutrality beats house style. */}
       <div className="relative flex-1 overflow-hidden rounded-lg bg-black">
         {/* A blob: URL cannot go through next/image, and there is nothing to
             optimise: these bytes are already in memory and never hit the
@@ -45,25 +51,18 @@ export function CapturePreview({
         )}
       </div>
 
+      {/* Keep is twice the width of Retake and the only lit thing on screen.
+          Both are honest about the decision: keeping is what the guest came to
+          do, and it is the one that spends something. */}
       <div className="mt-4 flex gap-3">
-        <button
-          type="button"
-          onClick={onDiscard}
-          disabled={disabled}
-          className="flex-1 rounded border border-neutral-700 px-4 py-3 text-sm font-medium text-neutral-300 disabled:opacity-40"
-        >
+        <Button variant="quiet" onClick={onDiscard} disabled={disabled} className="flex-1">
           Retake
-        </button>
-        <button
-          type="button"
-          onClick={onKeep}
-          disabled={disabled}
-          className="flex-[2] rounded bg-white px-4 py-3 text-sm font-medium text-black disabled:opacity-40"
-        >
+        </Button>
+        <Button onClick={onKeep} disabled={disabled} className="flex-[2]">
           Keep this shot
-        </button>
+        </Button>
       </div>
-      <p className="mt-3 text-center text-xs text-neutral-500">
+      <p className="mt-3 text-center text-xs text-ink-faint">
         Retaking costs you nothing. Keeping it uses one of your shots.
       </p>
     </div>

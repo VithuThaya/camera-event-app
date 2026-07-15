@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { Alert } from "@/components/ui/Alert"
 import type { FlushOutcome } from "@/lib/offline/flush"
 import { type UploadQueue, useUploadQueue } from "@/lib/offline/useUploadQueue"
 
@@ -331,18 +332,14 @@ export function CameraCapture({
 
   // --- Render ---------------------------------------------------------------
   if (cameraError) {
-    return (
-      <div className="rounded border border-red-900 bg-red-950 px-4 py-3 text-sm text-red-300">
-        {cameraError}
-      </div>
-    )
+    return <Alert>{cameraError}</Alert>
   }
 
   if (outOfShots && !capture) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <p className="text-lg font-medium">That was your last shot.</p>
-        <p className="mt-2 max-w-xs text-sm text-neutral-400">
+        <p className="text-lg font-medium text-ink">That was your last shot.</p>
+        <p className="mt-2 max-w-xs text-sm text-ink-dim">
           {/* Both halves are counted from what actually went up, never from
               the limit. "The host has them" is only true once they are up, and
               the number beside it is only true if it is the number we sent —
@@ -377,9 +374,7 @@ export function CameraCapture({
           </div>
         )}
         {uploadError && (
-          <p className="mt-3 rounded border border-red-900 bg-red-950 px-3 py-2 text-center text-sm text-red-300">
-            {uploadError}
-          </p>
+          <Alert className="mt-3 text-center">{uploadError}</Alert>
         )}
         <QueuedShots queue={queue} />
       </div>
@@ -388,7 +383,11 @@ export function CameraCapture({
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="relative flex-1 overflow-hidden rounded-lg bg-black">
+      {/* Pure black behind the viewfinder, not the room's warm near-black —
+          deliberately against the palette. This is the surround a photograph is
+          judged against, and a warm frame shifts how the eye reads the skin
+          tones inside it. Neutrality beats house style here. */}
+      <div className="relative flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-edge">
         <video
           // Not a plain ref. Previewing a shot unmounts this element, so the
           // one that comes back afterwards is a different node with nothing
@@ -410,10 +409,13 @@ export function CameraCapture({
           style={facingMode === "user" ? { transform: "scaleX(-1)" } : undefined}
         />
 
+        {/* The one place alarm-red is not an error: it is the universal "you
+            are recording" and has to be readable at a glance in a dim room, on
+            a moving phone, by someone who is not concentrating. */}
         {recording && (
-          <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-1.5">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-            <span className="text-sm tabular-nums text-white">{secondsLeft}s</span>
+          <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 backdrop-blur-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-alarm" />
+            <span className="numeric text-sm text-ink">{secondsLeft}s</span>
           </div>
         )}
 
@@ -421,21 +423,25 @@ export function CameraCapture({
           type="button"
           onClick={() => setFacingMode((f) => (f === "environment" ? "user" : "environment"))}
           disabled={recording}
-          className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+          aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
+          className="absolute right-3 top-3 rounded-full bg-black/50 px-3 py-2 text-xs text-ink backdrop-blur-sm disabled:opacity-40"
         >
           Flip
         </button>
       </div>
 
-      <div className="mt-4 flex justify-center gap-1 rounded-full border border-neutral-800 p-1">
+      {/* The selected mode is lit, the other is barely there. Two states, no
+          border-box competing with the viewfinder above it. */}
+      <div className="mt-4 flex justify-center gap-1 rounded-full border border-edge p-1">
         {(["photo", "video"] as const).map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => setMode(option)}
             disabled={recording}
-            className={`flex-1 rounded-full px-4 py-2 text-sm capitalize disabled:opacity-40 ${
-              mode === option ? "bg-white text-black" : "text-neutral-400"
+            aria-pressed={mode === option}
+            className={`flex-1 rounded-full px-4 py-2 text-sm capitalize transition-colors disabled:opacity-40 ${
+              mode === option ? "bg-surface-lift text-ink" : "text-ink-faint"
             }`}
           >
             {option}
@@ -443,19 +449,19 @@ export function CameraCapture({
         ))}
       </div>
 
-      {uploadError && (
-        <p className="mt-3 rounded border border-red-900 bg-red-950 px-3 py-2 text-center text-sm text-red-300">
-          {uploadError}
-        </p>
-      )}
+      {uploadError && <Alert className="mt-3 text-center">{uploadError}</Alert>}
 
+      {/* The shutter stays white, not safelight. It is the one control a guest
+          has to find one-handed, drunk, in a dark room, without looking — and
+          white on black is the highest contrast the screen can produce. The
+          safelight is the house accent; this is the thing that has to work. */}
       <div className="mt-4 flex flex-col items-center">
         {mode === "photo" ? (
           <button
             type="button"
             onClick={takePhoto}
             aria-label="Take photo"
-            className="rounded-full border-4 border-white/80 bg-white active:scale-95"
+            className="rounded-full border-4 border-white/80 bg-white transition-transform active:scale-95"
             style={{ height: "4.5rem", width: "4.5rem" }}
           />
         ) : (
@@ -463,18 +469,26 @@ export function CameraCapture({
             type="button"
             onClick={recording ? stopRecording : startRecording}
             aria-label={recording ? "Stop recording" : "Start recording"}
-            className="flex items-center justify-center rounded-full border-4 border-white/80 active:scale-95"
+            className="flex items-center justify-center rounded-full border-4 border-white/80 transition-transform active:scale-95"
             style={{ height: "4.5rem", width: "4.5rem" }}
           >
+            {/* Circle idles, square records. The shape carries the state, not
+                the colour — the two must be tellable apart at a glance. */}
             <span
-              className={
-                recording ? "h-6 w-6 rounded-sm bg-red-500" : "h-14 w-14 rounded-full bg-red-500"
-              }
+              className={`bg-alarm transition-all duration-150 ${
+                recording ? "h-6 w-6 rounded-sm" : "h-14 w-14 rounded-full"
+              }`}
             />
           </button>
         )}
-        <p className="mt-3 text-xs text-neutral-500">
-          {remaining} of {maxUploadsPerGuest} shots left
+
+        {/* A film counter, not a form label. The scarcity is the product, so
+            the number gets the ink and the sentence around it steps back. */}
+        <p className="mt-3 text-xs text-ink-faint">
+          <span className="numeric text-ink-dim">{remaining}</span>
+          {" of "}
+          <span className="numeric">{maxUploadsPerGuest}</span>
+          {" shots left"}
           {mode === "video" && ` · up to ${MAX_VIDEO_SECONDS}s`}
         </p>
       </div>
@@ -504,13 +518,14 @@ function QueuedShots({ queue }: { queue: UploadQueue }) {
   return (
     <div className="mt-3 space-y-2">
       {reasons.length > 0 && (
-        <div className="rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
-          <p className="font-medium">
-            {queue.rejected.length === 1
+        <Alert
+          title={
+            queue.rejected.length === 1
               ? "A saved shot could not be kept."
-              : `${queue.rejected.length} saved shots could not be kept.`}
-          </p>
-          <ul className="mt-1 space-y-0.5 text-xs text-red-300/80">
+              : `${queue.rejected.length} saved shots could not be kept.`
+          }
+        >
+          <ul className="space-y-0.5 text-xs">
             {reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
@@ -518,16 +533,18 @@ function QueuedShots({ queue }: { queue: UploadQueue }) {
           <button
             type="button"
             onClick={queue.dismissRejected}
-            className="mt-2 text-xs underline"
+            className="mt-2 text-xs underline underline-offset-2"
           >
             Got it
           </button>
-        </div>
+        </Alert>
       )}
 
+      {/* Waiting is not an error, so it is not alarm-coloured. It is a promise
+          being kept — the shot is safe and the guest need do nothing. */}
       {queue.queuedCount > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-900/60 px-3 py-2">
-          <p className="text-xs text-neutral-400">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-edge bg-surface/70 px-3 py-2">
+          <p className="text-xs text-ink-dim">
             {queue.flushing
               ? `Sending ${queue.queuedCount} saved ${one ? "shot" : "shots"}…`
               : `${queue.queuedCount} ${one ? "shot is" : "shots are"} safe on your phone — ${
@@ -538,7 +555,7 @@ function QueuedShots({ queue }: { queue: UploadQueue }) {
             <button
               type="button"
               onClick={queue.flushNow}
-              className="shrink-0 rounded border border-neutral-700 px-2.5 py-1 text-xs"
+              className="shrink-0 rounded border border-edge px-2.5 py-1 text-xs text-ink-dim transition-colors hover:border-edge-bright hover:text-ink"
             >
               Try now
             </button>

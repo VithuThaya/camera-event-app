@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
+import { Alert } from "@/components/ui/Alert"
+import { Button } from "@/components/ui/Button"
 import { formatBytes } from "@/lib/format"
 import type { HostDashboard } from "@/lib/host"
 import { EVENT_LIMITS, STORAGE_PRESETS } from "@/lib/validation"
@@ -82,7 +84,7 @@ export function SettingsForm({
           maxLength={120}
           value={name}
           onChange={(event) => setName(event.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+          className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-ink"
         />
       </Field>
 
@@ -96,7 +98,7 @@ export function SettingsForm({
           max={EVENT_LIMITS.maxGuests.max}
           value={maxGuests}
           onChange={(event) => setMaxGuests(Number(event.target.value))}
-          className="w-full"
+          className="w-full accent-safelight"
         />
       </Field>
 
@@ -110,7 +112,7 @@ export function SettingsForm({
           max={EVENT_LIMITS.maxUploadsPerGuest.max}
           value={maxUploadsPerGuest}
           onChange={(event) => setMaxUploadsPerGuest(Number(event.target.value))}
-          className="w-full"
+          className="w-full accent-safelight"
         />
       </Field>
 
@@ -121,7 +123,7 @@ export function SettingsForm({
         <select
           value={maxStorageBytes}
           onChange={(event) => setMaxStorageBytes(Number(event.target.value))}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+          className="w-full rounded-md border border-edge bg-ground px-3 py-2 text-ink"
         >
           {usablePresets.map((preset) => (
             <option key={preset.bytes} value={preset.bytes}>
@@ -145,24 +147,23 @@ export function SettingsForm({
           max={90}
           value={retentionDays}
           onChange={(event) => setRetentionDays(Number(event.target.value))}
-          className="w-full"
+          className="w-full accent-safelight"
         />
       </Field>
 
-      {error && (
-        <p className="rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
-          {error}
+      {error && <Alert>{error}</Alert>}
+      {/* Quiet, and no longer green. A traffic-light green has no business in a
+          darkroom, and "Saved." is not news worth a colour of its own — the form
+          in front of the host already shows what was saved. */}
+      {saved && (
+        <p role="status" className="text-sm text-ink-dim">
+          Saved.
         </p>
       )}
-      {saved && <p className="text-sm text-green-400">Saved.</p>}
 
-      <button
-        type="submit"
-        disabled={busy || !name.trim()}
-        className="w-full rounded bg-white px-4 py-3 font-medium text-black disabled:opacity-40"
-      >
+      <Button type="submit" disabled={busy || !name.trim()} className="w-full">
         {busy ? "Saving…" : "Save settings"}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -178,8 +179,8 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium">{label}</span>
-      {hint && <span className="mt-0.5 block text-xs text-neutral-500">{hint}</span>}
+      <span className="text-sm font-medium text-ink">{label}</span>
+      {hint && <span className="mt-0.5 block text-xs text-ink-faint">{hint}</span>}
       <div className="mt-2">{children}</div>
     </label>
   )

@@ -18,7 +18,7 @@ export function UploadProgress({ fraction }: { fraction: number }) {
   return (
     <div className="w-full">
       <div
-        className="h-1 w-full overflow-hidden rounded-full bg-neutral-800"
+        className="h-1 w-full overflow-hidden rounded-full bg-surface-lift"
         role="progressbar"
         aria-valuenow={percent}
         aria-valuemin={0}
@@ -26,11 +26,13 @@ export function UploadProgress({ fraction }: { fraction: number }) {
         aria-label="Upload progress"
       >
         <div
-          className="h-full bg-white transition-[width] duration-200 ease-out"
+          className="h-full bg-safelight transition-[width] duration-200 ease-out"
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="mt-2 text-center text-xs text-neutral-400">{label}</p>
+      {/* Mono, so the percentage does not shuffle the label sideways on every
+          tick. The bar is the calm thing here and the text should be too. */}
+      <p className="numeric mt-2 text-center text-xs text-ink-dim">{label}</p>
     </div>
   )
 }

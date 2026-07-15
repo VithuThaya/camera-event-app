@@ -3,6 +3,8 @@
 import QRCode from "qrcode"
 import { useEffect, useState } from "react"
 
+import { Panel } from "@/components/ui/Panel"
+
 /**
  * The way in, shown again.
  *
@@ -46,25 +48,31 @@ export function GuestLink({ guestToken }: { guestToken: string }) {
 
   if (!share) {
     return (
-      <section className="rounded border border-neutral-800 p-4">
-        <h2 className="font-medium">Guest link</h2>
-      </section>
+      <Panel>
+        <h2 className="font-medium text-ink">Guest link</h2>
+      </Panel>
     )
   }
 
   return (
-    <section className="rounded border border-neutral-800 p-4">
-      <h2 className="font-medium">Guest link</h2>
-      <p className="mt-1 text-sm text-neutral-400">
+    <Panel>
+      <h2 className="font-medium text-ink">Guest link</h2>
+      <p className="mt-1 text-sm text-ink-dim">
         Anyone with this can add shots. No app, no signup.
       </p>
 
       {share.qr && (
-        /* eslint-disable-next-line @next/next/no-img-element -- data: URL built in-browser; there is nothing for the image optimizer to fetch */
+        /* The one white rectangle allowed in the darkroom, and it has to be one.
+           A QR is read by a camera that needs real contrast — tinting it to suit
+           the room is how you end up with a poster nobody's phone can scan
+           across a dim venue.
+           eslint-disable-next-line @next/next/no-img-element -- data: URL built
+           in-browser; there is nothing for the image optimizer to fetch */
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={share.qr}
           alt="QR code linking guests to this event"
-          className="mt-4 w-48 rounded bg-white p-2"
+          className="mt-4 w-48 rounded-md bg-white p-2"
         />
       )}
 
@@ -73,7 +81,7 @@ export function GuestLink({ guestToken }: { guestToken: string }) {
           readOnly
           value={share.url}
           onFocus={(event) => event.currentTarget.select()}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-xs"
+          className="w-full rounded-md border border-edge bg-ground px-2 py-1 font-mono text-xs text-ink-dim"
         />
         <button
           type="button"
@@ -82,11 +90,11 @@ export function GuestLink({ guestToken }: { guestToken: string }) {
             setCopied(true)
             setTimeout(() => setCopied(false), 1500)
           }}
-          className="shrink-0 rounded border border-neutral-700 px-3 py-1 text-xs"
+          className="shrink-0 rounded-md border border-edge px-3 py-1 text-xs text-ink transition-colors hover:border-edge-bright"
         >
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-    </section>
+    </Panel>
   )
 }

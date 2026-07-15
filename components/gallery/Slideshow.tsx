@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { buttonStyles } from "@/components/ui/Button"
+
 import { useEventMedia } from "./useEventMedia"
 
 /**
@@ -133,14 +135,11 @@ export function Slideshow({ hostToken }: { hostToken: string }) {
   if (state.status === "locked") {
     return (
       <Centered>
-        <p className="font-medium">Still sealed</p>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="font-medium text-ink">Still sealed</p>
+        <p className="mt-1 text-sm text-ink-dim">
           Unlock the event first — there is nothing to show yet.
         </p>
-        <Link
-          href={`/host/${hostToken}`}
-          className="mt-4 inline-block rounded bg-white px-4 py-2 text-sm font-medium text-black"
-        >
+        <Link href={`/host/${hostToken}`} className={`${buttonStyles("quiet")} mt-4`}>
           Back to the dashboard
         </Link>
       </Centered>
@@ -182,15 +181,19 @@ export function Slideshow({ hostToken }: { hostToken: string }) {
         />
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center justify-between p-4 text-xs text-white/50">
-        <span className="tabular-nums">
+      {/* Chrome over a photograph in front of a room: as close to absent as it
+          can be while still being findable. White at 40% rather than a room
+          token — this floats over whatever the photo happens to be, not over
+          the darkroom, so it cannot borrow the room's contrast. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center justify-between p-4 text-xs text-white/40">
+        <span className="numeric">
           {safeIndex + 1} / {state.items.length}
         </span>
-        {paused && <span className="text-white/80">Paused</span>}
+        {paused && <span className="text-white/70">Paused</span>}
         <button
           type="button"
           onClick={() => void containerRef.current?.requestFullscreen?.()}
-          className="pointer-events-auto rounded bg-black/50 px-2 py-1"
+          className="pointer-events-auto rounded bg-black/50 px-2 py-1 transition-opacity hover:text-white/90"
         >
           Fullscreen
         </button>
@@ -201,7 +204,7 @@ export function Slideshow({ hostToken }: { hostToken: string }) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center text-neutral-300">
+    <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center text-ink-dim">
       {children}
     </div>
   )

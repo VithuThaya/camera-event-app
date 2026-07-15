@@ -1,3 +1,4 @@
+import { Alert } from "@/components/ui/Alert"
 import { daysUntil } from "@/lib/format"
 
 /**
@@ -65,17 +66,14 @@ function Banner({
   tone: "warn" | "urgent"
   children: React.ReactNode
 }) {
-  // Amber asks, red tells. The urgent state is the only place in this dark,
-  // deliberately quiet interface that is allowed to raise its voice — which is
-  // what makes it work at all.
-  const styles =
-    tone === "urgent"
-      ? "border-red-900 bg-red-950/40 text-red-200"
-      : "border-amber-900 bg-amber-950/30 text-amber-200"
-
+  // The safelight asks, the alarm tells. Mapped onto the shared Alert rather
+  // than hand-rolled, so this cannot drift from the rest of the room — but both
+  // tones are kept, because they are the difference between "plan for this" and
+  // "tonight". The urgent state is the only place this deliberately quiet
+  // interface raises its voice, which is exactly what makes it work.
   return (
-    <p role="status" className={`mt-6 rounded border px-3 py-2 text-sm ${styles}`}>
+    <Alert tone={tone === "urgent" ? "alarm" : "notice"} className="mt-6">
       {children}
-    </p>
+    </Alert>
   )
 }

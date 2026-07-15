@@ -15,8 +15,11 @@ import type { ButtonHTMLAttributes } from "react"
  *     glows. One per view — the thing you came to do.
  *   - `quiet` is everything else. It reads as available without asking for
  *     attention.
- *   - `danger` is for the acts that cannot be undone: unlocking an event and
- *     deleting one.
+ *   - `danger` is for the tap that *commits* something irreversible — opening
+ *     the roll for good, deleting an event. Not for the button that raises the
+ *     confirmation: "Unlock now" only opens a dialog and undoes nothing, so it
+ *     stays a primary. Painting the way in red spends the colour before the
+ *     moment that needs it, and teaches the host to click through red.
  */
 
 export type ButtonVariant = "primary" | "quiet" | "danger"

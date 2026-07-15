@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation"
 
 import { ConsentNotice } from "@/components/consent/ConsentNotice"
+import { Eyebrow } from "@/components/ui/Panel"
 import { countGuestSessions, findActiveEventByGuestToken } from "@/lib/events"
 import { readGuestSession } from "@/lib/session"
 import { supabaseAdmin } from "@/lib/supabase/server"
@@ -43,8 +44,9 @@ export default async function GuestLandingPage({
   if (!session && (await countGuestSessions(event.id)) >= event.max_guests) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <h1 className="text-2xl font-semibold">{event.name}</h1>
-        <p className="mt-3 text-neutral-400">
+        <Eyebrow>No room left</Eyebrow>
+        <h1 className="mt-2 text-2xl font-semibold text-balance">{event.name}</h1>
+        <p className="mt-3 text-ink-dim">
           This event is full — it has reached its guest limit. Ask the host to
           raise it if you should be in.
         </p>

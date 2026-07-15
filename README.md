@@ -20,10 +20,10 @@ party, or to download and share.
 
 ## Status
 
-Phase 4 of 5. The whole arc works end to end: create an event with your own
-limits, share the QR, guests consent and shoot, nothing is visible to anyone,
-then you unlock — and the roll is yours to browse, run as a slideshow, or
-download as one ZIP. A shot taken where there is no signal waits on the phone
+All five phases are in. The whole arc works end to end: create an event with
+your own limits, share the QR, guests consent and shoot, nothing is visible to
+anyone, then you unlock — and the roll is yours to browse, run as a slideshow,
+or download as one ZIP. A shot taken where there is no signal waits on the phone
 and goes up on its own.
 
 | Phase | Scope | State |
@@ -33,12 +33,49 @@ and goes up on its own.
 | 3 | Unlock, host gallery, slideshow, ZIP download | Done |
 | 4a | Offline capture queue | Done |
 | 4b | Retention cron, deletion warnings | Done |
-| 5 | Film-look UI pass | Next |
+| 5 | Film-look UI pass | Done |
+
+Three things still need a physical phone before any of this is claimed to work
+in someone's hand — see [What no script here can prove](#what-no-script-here-can-prove).
 
 ## Stack
 
 Next.js 16 (App Router) with Node-runtime route handlers, Supabase Postgres +
 Storage, deployed as a single Vercel project. No separate backend service.
+
+## The look
+
+A darkroom: a warm near-black room, warm off-white text, and a single amber
+safelight as the only accent. Nothing else is allowed to be colourful, because
+the photographs are. Surfaces lift by getting lighter and warmer rather than by
+casting a shadow — a drop shadow on near-black is invisible, and every attempt
+to make it visible ends in a grey halo that reads as a rendering bug. There is
+no light theme: the gallery and the slideshow are the product and both get
+looked at in a dim room.
+
+**The grain never touches a photograph.** It lives in `body`'s
+`background-image`, not in an overlay, and that is the whole reason: an overlay
+covering the viewport covers the photographs too, and the promise is that what
+the host sees on screen is what is in the file they download. As a background it
+sits behind every descendant by construction — there is no z-index for anyone to
+get wrong later. Nothing in the gallery, lightbox or slideshow carries a
+`filter`, `mix-blend-mode`, `backdrop-filter` or colour wash. The frame *around*
+a photo is pure black rather than the room's warm black, deliberately against
+the palette: a warm surround shifts how the eye reads the skin tones inside it.
+
+Its strength is measured rather than chosen. `feTurbulence` with `fractalNoise`
+emits noise on all four channels including alpha, so at the 0.4 it started on,
+the rect rendered as half-opaque mid-grey and lifted the room to a washed-out
+grey-brown with no darkroom left. A `feColorMatrix` kills the colour noise —
+which no film stock ever had — and at 0.055 the room measures `#0f0e0d` against
+its `#0a0908` token.
+
+One accent means one lit thing per screen. The shutter is the exception and
+stays white: it is the control a guest has to find one-handed, in the dark,
+without looking, and white on black is the highest contrast a screen can make.
+The QR code is the other, for the same kind of reason — it is read by a camera
+that needs real contrast, and tinting it to suit the room produces a poster
+nobody can scan across a dim venue.
 
 ## Security model
 
@@ -70,7 +107,17 @@ The reveal is one gate in one place (`isEventUnlocked` in `lib/events.ts`,
 reached through `gateHostMedia`). Gallery, slideshow and download-all all ask
 it, and the plan's separate `/slideshow` route was deliberately not built: two
 routes are two places to remember the check, and the one that gets forgotten is
-the one that serves the whole party's photos. The host is gated by their own
+the one that serves the whole party's photos.
+
+That single home is also why the gallery's "Slideshow" and "Download all" live
+inside `GalleryGrid` rather than in the page around it. The page deliberately
+does not know whether the roll is open — only the route does, and the grid is
+what it answers. While those buttons sat in the page header they rendered over a
+sealed event too, so a host arriving at the gallery URL directly was offered a
+lit "Download all" that answered 403 with a raw JSON body in their browser
+window. Nothing was exposed — the server refused, as it is supposed to — but the
+interface was lying, and the fix is to let the component that already knows do
+the deciding rather than to teach the page the rule a second time. The host is gated by their own
 unlock even though they can lift it in one tap — that tap stamps `unlocked_at`
 and starts the retention clock, so the reveal cannot happen quietly. That stamp
 is written exactly once: every unlock write carries "and the event is still
@@ -220,6 +267,17 @@ screen in Chrome with the network cut at the CDP level — capture offline, watc
 the server stay empty, reconnect, watch the shot arrive confirmed and stripped
 and counted exactly once.
 
+The look has no script either, for the same reason, but the two claims worth
+holding it to were measured in the browser rather than eyeballed. That the room
+is really Geist and not the fallback: the same string measures 663.11px under
+the body stack and under Geist, and 656.47px under Arial — `getComputedStyle`
+reports what the CSS asks for, not what rendered, and it said "Geist" the whole
+time the app was actually drawing Arial. That the grain cannot reach a
+photograph: of 432 CSS rules, the only three mentioning it all target `body` and
+all carry it as a background property; no viewport-sized element and no `body`
+pseudo-element exists; and a rendered gallery photo reports `filter: none`,
+`mix-blend-mode: normal`, `backdrop-filter: none`, `opacity: 1`.
+
 Three things still need a real device and are not claimed to work until someone
 checks them:
 
@@ -230,6 +288,17 @@ checks them:
   ~5 MB estimate the 15s cap rests on has never met an actual phone.
 - **Video through the queue.** Only photos have made the offline round trip; a
   40 MB clip is the same code path with a much longer PUT.
+
+### If the app renders in Arial
+
+It did, from Phase 1 until Phase 5. `create-next-app` leaves
+`body { font-family: Arial, Helvetica, sans-serif }` in `globals.css`, which
+silently overrides the Geist that `next/font` loads and that `@theme` maps into
+`--font-sans`. Both fonts were fetched on every visit and neither was ever
+shown, and nothing failed — no error, no warning, and `getComputedStyle` cannot
+see it. The Arial that remains in the built CSS is `next/font`'s own
+metric-adjusted fallback (`@font-face { font-family: Geist Fallback; src:
+local(Arial) }`) and belongs there.
 
 ### If routes 404 in dev that exist on disk
 

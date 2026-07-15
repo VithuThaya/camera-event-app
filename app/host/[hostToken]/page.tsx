@@ -5,6 +5,9 @@ import { GuestLink } from "@/components/host/GuestLink"
 import { LiveStatsPanel } from "@/components/host/LiveStatsPanel"
 import { RetentionNotice } from "@/components/host/RetentionNotice"
 import { UnlockControl } from "@/components/host/UnlockControl"
+import { Alert } from "@/components/ui/Alert"
+import { buttonStyles } from "@/components/ui/Button"
+import { Eyebrow } from "@/components/ui/Panel"
 import { buildHostDashboard, findEventByHostToken } from "@/lib/host"
 
 /**
@@ -32,9 +35,7 @@ export default async function HostDashboardPage({
   if (!dashboard) {
     return (
       <main className="mx-auto max-w-lg px-6 py-12">
-        <p className="text-sm text-red-400">
-          Could not load this event right now. Please refresh.
-        </p>
+        <Alert>Could not load this event right now. Please refresh.</Alert>
       </main>
     )
   }
@@ -44,14 +45,18 @@ export default async function HostDashboardPage({
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
       <header>
-        <h1 className="text-2xl font-semibold">{dashboard.name}</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <Eyebrow>Your event</Eyebrow>
+        <h1 className="mt-2 text-2xl font-semibold text-balance">{dashboard.name}</h1>
+        <p className="mt-1 text-sm text-ink-faint">
           Only you can see this page. Keep this link to yourself.
         </p>
       </header>
 
+      {/* Not an alarm. The bad news already happened and there is nothing left
+          to act on — this is an epitaph and should read like one, rather than
+          shout at someone who can no longer do anything about it. */}
       {archived && (
-        <p className="mt-6 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-300">
+        <p className="mt-6 rounded-md border border-edge bg-surface px-3 py-2 text-sm text-ink-dim">
           This event has passed its deletion date. The photos are gone — this page is
           all that is left of it.
         </p>
@@ -69,18 +74,18 @@ export default async function HostDashboardPage({
 
         <UnlockControl hostToken={hostToken} unlock={dashboard.unlock} />
 
+        {/* Once the roll is open, the slideshow is what the host came for —
+            it is the payoff the whole product is built around, so it is the
+            one lit thing here. Browsing is the calmer sibling. */}
         {dashboard.unlock.revealed && !archived && (
           <section className="grid grid-cols-2 gap-3">
             <Link
               href={`/host/${hostToken}/gallery`}
-              className="rounded border border-neutral-700 px-4 py-3 text-center text-sm font-medium"
+              className={buttonStyles("quiet")}
             >
               See the roll
             </Link>
-            <Link
-              href={`/host/${hostToken}/slideshow`}
-              className="rounded bg-white px-4 py-3 text-center text-sm font-medium text-black"
-            >
+            <Link href={`/host/${hostToken}/slideshow`} className={buttonStyles()}>
               Start the slideshow
             </Link>
           </section>
@@ -90,7 +95,7 @@ export default async function HostDashboardPage({
 
         <Link
           href={`/host/${hostToken}/settings`}
-          className="block text-sm text-neutral-400 underline"
+          className="block text-sm text-ink-faint underline underline-offset-4 transition-colors hover:text-ink-dim"
         >
           Settings
         </Link>

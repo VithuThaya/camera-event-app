@@ -37,15 +37,22 @@ export function MediaLightbox({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
-      <div className="flex items-center justify-between px-4 py-3 text-sm text-neutral-400">
-        <span className="tabular-nums">
+      {/* White at 50%, not a room token: this chrome floats over whatever the
+          photograph happens to be, so it cannot borrow the darkroom's contrast
+          the way the rest of the interface can. */}
+      <div className="flex items-center justify-between px-4 py-3 text-sm text-white/50">
+        <span className="numeric">
           {index + 1} / {items.length}
         </span>
         <div className="flex items-center gap-4">
-          <a href={item.url} download className="underline">
+          <a
+            href={item.url}
+            download
+            className="underline underline-offset-4 transition-colors hover:text-white"
+          >
             Download
           </a>
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} className="transition-colors hover:text-white">
             Close
           </button>
         </div>

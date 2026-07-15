@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
+import { Alert } from "@/components/ui/Alert"
+import { Button } from "@/components/ui/Button"
+import { Eyebrow } from "@/components/ui/Panel"
+
 /**
  * The GDPR notice, shown before the camera is ever requested.
  *
@@ -53,12 +57,10 @@ export function ConsentNotice({
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-12">
-      <p className="text-xs uppercase tracking-widest text-neutral-500">
-        You are invited to shoot
-      </p>
-      <h1 className="mt-2 text-3xl font-semibold">{eventName}</h1>
+      <Eyebrow>You are invited to shoot</Eyebrow>
+      <h1 className="mt-2 text-3xl font-semibold text-balance">{eventName}</h1>
 
-      <div className="mt-8 space-y-4 text-sm text-neutral-300">
+      <div className="mt-8 space-y-4 text-sm">
         <Point title={`You get ${maxUploadsPerGuest} shots`}>
           That is the whole point. Fewer shots, better shots — make them count.
         </Point>
@@ -81,29 +83,28 @@ export function ConsentNotice({
         </Point>
       </div>
 
-      <p className="mt-6 text-xs text-neutral-500">
+      <p className="mt-6 text-xs text-ink-faint">
         No account, no signup, no name or email collected. Tapping below turns
         on your camera and records that you agreed to the above.
       </p>
 
-      {error && (
-        <p className="mt-4 rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <Alert className="mt-4">{error}</Alert>}
 
-      <button
-        type="button"
-        onClick={accept}
-        disabled={submitting}
-        className="mt-6 w-full rounded bg-white px-4 py-3 font-medium text-black disabled:opacity-40"
-      >
+      <Button onClick={accept} disabled={submitting} className="mt-6 w-full">
         {submitting ? "Joining…" : "Agree and open camera"}
-      </button>
+      </Button>
     </main>
   )
 }
 
+/**
+ * One promise, and what it actually means.
+ *
+ * The title carries full-strength ink and the explanation sits a step back —
+ * so the five promises can be read on their own in a couple of seconds, with
+ * the detail there for anyone who stops. This is a legal notice people are
+ * genuinely expected to read, which is exactly why it gets no cleverness.
+ */
 function Point({
   title,
   children,
@@ -113,8 +114,8 @@ function Point({
 }) {
   return (
     <div>
-      <p className="font-medium text-neutral-100">{title}</p>
-      <p className="mt-0.5 text-neutral-400">{children}</p>
+      <p className="font-medium text-ink">{title}</p>
+      <p className="mt-0.5 text-ink-dim">{children}</p>
     </div>
   )
 }
