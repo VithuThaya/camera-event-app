@@ -257,6 +257,47 @@ Each must exit 0. They create their own events and delete them afterwards.
 `verify-retention.mjs` additionally needs `CRON_SECRET` set to the same value the
 dev server was started with — it calls the cron route the way Vercel does.
 
+### Testing on a real phone
+
+The camera needs HTTPS, and that one fact decides the whole setup. Browsers
+expose `getUserMedia` only in a secure context, and `localhost` is the single
+insecure origin they make an exception for — an exception that does **not**
+extend to the LAN address a phone would need to reach the machine. Serving the
+dev server at `http://192.168.x.x:3000` therefore fails in the worst way
+available: the page loads, the layout is right, and `navigator.mediaDevices` is
+simply absent. It reads as a bug in the capture code, and it is not one.
+
+A tunnel supplies a real certificate and sidesteps all of it:
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+`brew install cloudflared` may decide to build Go from source first, which takes
+longer than the thing you were trying to test. The release binary is a download:
+
+```bash
+# amd64 for Intel, arm64 for Apple Silicon — check with `uname -m`
+curl -fsSL -o cloudflared.tgz \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz
+tar xzf cloudflared.tgz && mv cloudflared /usr/local/bin/
+```
+
+Open the printed `https://….trycloudflare.com` **on the desktop** and create the
+event there. The QR is built from `window.location.origin`, so an event created
+at localhost encodes localhost and sends the guest's phone to the guest's own
+phone. This is also why `NEXT_PUBLIC_APP_URL` is left unset locally: a quick
+tunnel draws a fresh URL on every restart, and pinning one in `.env.local` means
+editing it each time.
+
+`next.config.ts` carries `*.trycloudflare.com` in `allowedDevOrigins`. Next
+blocks cross-origin requests to dev-only assets by default, so without that entry
+the tunnel serves a page that cannot load its own scripts.
+
+A quick tunnel is unauthenticated and world-reachable for as long as it runs,
+in front of a real Supabase project. The URL is unguessable and that is the only
+thing guarding it. `pkill cloudflared` when done.
+
 ### What no script here can prove
 
 The offline queue has no verification script, because the thing worth proving
@@ -277,6 +318,17 @@ photograph: of 432 CSS rules, the only three mentioning it all target `body` and
 all carry it as a background property; no viewport-sized element and no `body`
 pseudo-element exists; and a rendered gallery photo reports `filter: none`,
 `mix-blend-mode: normal`, `backdrop-filter: none`, `opacity: 1`.
+
+A viewfinder with no camera behind it proves nothing about layout, and this cost
+a release. A headless browser hands `<video>` no stream, so the element has no
+intrinsic size — and a flex item with nothing to measure cannot overflow. The
+capture screen therefore measured perfectly at phone dimensions in Chrome while
+the shutter sat 320px below the fold on an actual phone, behind a scroll, which
+is the one control a guest has to find without looking. What reproduced it was
+feeding the element a 720×1280 canvas stream: 996px of content in a 632px
+viewport, against 632/632 once `min-h-0` let `flex-1` shrink and `h-dvh`
+replaced `min-h-dvh`. Anything touching that screen has to be measured with a
+stream attached, or it is measuring an empty box.
 
 Three things still need a real device and are not claimed to work until someone
 checks them:
@@ -299,6 +351,22 @@ shown, and nothing failed — no error, no warning, and `getComputedStyle` canno
 see it. The Arial that remains in the built CSS is `next/font`'s own
 metric-adjusted fallback (`@font-face { font-family: Geist Fallback; src:
 local(Arial) }`) and belongs there.
+
+### If a hydration error fires on a phone but never on the desktop
+
+Chrome on iOS stamps `__gcrremoteframetoken` onto `<html>` through its `__gCrWeb`
+bridge before React runs, and React dutifully reports the attribute it did not
+render as a server/client mismatch. The attribute is the browser's, not ours,
+and there is nothing to reconcile — which is what `suppressHydrationWarning` on
+`<html>` in `app/layout.tsx` is for. It reaches exactly one level, so real
+mismatches inside the app still report.
+
+Two things about this are worth keeping. Next's overlay names a browser extension
+as a possible cause, and that line deserves to be read literally rather than
+dismissed: here it was the browser itself, on a phone with no extensions. And the
+dev server forwards browser console errors to the terminal, so the same error
+appearing there is not evidence the server produced it — which is exactly the
+wrong turn this took the first time.
 
 ### If routes 404 in dev that exist on disk
 
