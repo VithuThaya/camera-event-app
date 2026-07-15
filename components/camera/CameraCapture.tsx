@@ -358,7 +358,7 @@ export function CameraCapture({
 
   if (capture) {
     return (
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <CapturePreview
           capture={capture}
           onKeep={keep}
@@ -382,12 +382,16 @@ export function CameraCapture({
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Pure black behind the viewfinder, not the room's warm near-black —
           deliberately against the palette. This is the surround a photograph is
           judged against, and a warm frame shifts how the eye reads the skin
           tones inside it. Neutrality beats house style here. */}
-      <div className="relative flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-edge">
+      {/* min-h-0 is load-bearing. A flex item refuses to shrink below its own
+          content by default, and once the stream is live the <video> carries the
+          camera's intrinsic portrait size — so without this the viewfinder wins
+          the argument against the shutter and the guest has to scroll to shoot. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-edge">
         <video
           // Not a plain ref. Previewing a shot unmounts this element, so the
           // one that comes back afterwards is a different node with nothing

@@ -36,8 +36,13 @@ export default async function CapturePage({
 
   return (
     /* Tight padding and a one-line header: the viewfinder is the screen. Every
-       pixel here exists to give the camera as much of the phone as it can get. */
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-3 py-4">
+       pixel here exists to give the camera as much of the phone as it can get.
+
+       The height is exact, not a floor. A minimum would let the viewfinder grow
+       to the camera stream's own portrait size and push the shutter off the
+       bottom of the phone — the one control that has to be reachable without
+       looking, behind a scroll. */
+    <main className="mx-auto flex h-dvh max-w-md flex-col px-3 py-4">
       <header className="mb-3 flex items-baseline justify-between gap-3">
         <h1 className="truncate text-sm font-medium text-ink-dim">{guest.event.name}</h1>
         <p className="shrink-0 text-xs text-ink-faint">Nobody sees these yet</p>

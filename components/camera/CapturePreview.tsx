@@ -33,12 +33,16 @@ export function CapturePreview({
   useEffect(() => () => URL.revokeObjectURL(url), [url])
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Pure black here, not the room's warm near-black — deliberately against
           the palette. object-contain letterboxes the shot, and a warm surround
           shifts how the eye reads the skin tones inside it. The frame around a
-          photograph is the one place neutrality beats house style. */}
-      <div className="relative flex-1 overflow-hidden rounded-lg bg-black">
+          photograph is the one place neutrality beats house style.
+
+          min-h-0 for the same reason as the viewfinder: the shot inside carries
+          its own size, and without this it would push Keep off the screen at the
+          exact moment the guest is deciding whether to spend a slot. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-black">
         {/* A blob: URL cannot go through next/image, and there is nothing to
             optimise: these bytes are already in memory and never hit the
             network. */}
