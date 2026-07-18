@@ -119,6 +119,9 @@ export function CameraCapture({
   // it finishes: if it has moved on, the guest retook or kept in the meantime,
   // so the just-uploaded pending object is cancelled instead of shown.
   const uploadGenRef = useRef(0)
+  // The in-flight background upload, so a Keep tapped before it finishes can
+  // await it instead of racing it into a second upload.
+  const videoUploadRef = useRef<Promise<VideoUpload> | null>(null)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [uploadsUsed, setUploadsUsed] = useState(initialUploadCount)
@@ -351,35 +354,43 @@ export function CameraCapture({
   // review can play it back over HTTPS (iOS refuses the local blob). Guarded by
   // the generation counter: if the guest retakes or keeps before this finishes,
   // the upload it produced is cancelled rather than shown.
-  async function startVideoUpload(cap: Capture) {
+  function startVideoUpload(cap: Capture): Promise<VideoUpload> {
     const gen = ++uploadGenRef.current
     setVideoUpload({ status: "uploading" })
-    try {
-      const mediaId = await reserveAndPut(guestToken, cap)
-      if (uploadGenRef.current !== gen) {
-        void cancelPending(guestToken, mediaId)
-        return
-      }
-      // One retry: a signed read URL cannot be minted until the PUT is visible
-      // in the bucket, which is usually instant but not guaranteed the same tick.
-      let previewUrl: string
+    const run = async (): Promise<VideoUpload> => {
       try {
-        previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+        const mediaId = await reserveAndPut(guestToken, cap)
+        if (uploadGenRef.current !== gen) {
+          void cancelPending(guestToken, mediaId)
+          return { status: "failed" }
+        }
+        // One retry: a signed read URL cannot be minted until the PUT is visible
+        // in the bucket, usually instant but not guaranteed the same tick.
+        let previewUrl: string
+        try {
+          previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 400))
+          previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+        }
+        if (uploadGenRef.current !== gen) {
+          void cancelPending(guestToken, mediaId)
+          return { status: "failed" }
+        }
+        const ready: VideoUpload = { status: "ready", mediaId, previewUrl }
+        setVideoUpload(ready)
+        return ready
       } catch {
-        await new Promise((resolve) => setTimeout(resolve, 400))
-        previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+        // No signal, or the reserve was refused. The review shows the still, and
+        // Keep falls back to a full upload-on-keep (quota gate + offline queue),
+        // so there is nothing to surface here.
+        if (uploadGenRef.current === gen) setVideoUpload({ status: "failed" })
+        return { status: "failed" }
       }
-      if (uploadGenRef.current !== gen) {
-        void cancelPending(guestToken, mediaId)
-        return
-      }
-      setVideoUpload({ status: "ready", mediaId, previewUrl })
-    } catch {
-      // No signal, or the reserve was refused. The review shows the still, and
-      // Keep falls back to a full upload-on-keep (quota gate + offline queue), so
-      // there is nothing to surface here.
-      if (uploadGenRef.current === gen) setVideoUpload({ status: "failed" })
     }
+    const promise = run()
+    videoUploadRef.current = promise
+    return promise
   }
 
   // --- Video ----------------------------------------------------------------
@@ -517,15 +528,23 @@ export function CameraCapture({
     setUploadError(null)
 
     try {
-      if (capture.mediaType === "video" && videoUpload?.status === "ready") {
-        // The bytes are already up from the background upload — keeping only has
-        // to make them real. No second upload, no progress bar, just confirm.
-        setProgress(1)
-        await confirmUpload(guestToken, videoUpload.mediaId)
-      } else {
+      let handled = false
+      if (capture.mediaType === "video" && videoUploadRef.current) {
+        // Wait for the background upload if it is still running, so a Keep tapped
+        // early confirms those bytes rather than racing a second upload beside
+        // them. A failed upload (offline) falls through to the full upload below.
+        const uploaded = await videoUploadRef.current
+        if (uploaded.status === "ready") {
+          setProgress(1)
+          await confirmUpload(guestToken, uploaded.mediaId)
+          handled = true
+        }
+      }
+      if (!handled) {
         await uploadCapture(guestToken, capture, setProgress)
       }
       uploadGenRef.current++
+      videoUploadRef.current = null
       setUploadsUsed((count) => count + 1)
       setCapture(null)
       setPosterUrl(null)
@@ -544,6 +563,7 @@ export function CameraCapture({
           // is on the phone, the counter already treats it as spent, and the
           // notice below the shutter says the rest. Back to the camera.
           uploadGenRef.current++
+          videoUploadRef.current = null
           setCapture(null)
           setPosterUrl(null)
           setVideoUpload(null)
@@ -601,6 +621,7 @@ export function CameraCapture({
             // Invalidate any in-flight upload, and delete one that already landed
             // — a discarded clip must not keep charging the guest a slot.
             uploadGenRef.current++
+            videoUploadRef.current = null
             if (capture.mediaType === "video" && videoUpload?.status === "ready") {
               void cancelPending(guestToken, videoUpload.mediaId)
             }

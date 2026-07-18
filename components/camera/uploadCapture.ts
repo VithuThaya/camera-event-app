@@ -203,9 +203,18 @@ export async function fetchPreviewUrl(guestToken: string, mediaId: string): Prom
  * The caller does not wait on it or surface its failure.
  */
 export async function cancelPending(guestToken: string, mediaId: string): Promise<void> {
-  try {
-    await postJson(`/api/events/${guestToken}/upload/cancel`, { mediaId })
-  } catch {
-    // Swallowed on purpose — see above.
+  // Two attempts before leaving it to the hourly sweep. A single dropped request
+  // is the usual failure, and a discarded clip holds the guest's slot until it is
+  // gone, so one retry is worth the half-second.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await postJson(`/api/events/${guestToken}/upload/cancel`, { mediaId })
+      // Done — deleted (ok), or already kept / already gone (409), which the
+      // retry cannot improve on.
+      if (response.ok || response.status === 409) return
+    } catch {
+      // Network error — fall through to a short wait and one more try.
+    }
+    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 500))
   }
 }
