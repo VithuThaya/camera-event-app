@@ -12,7 +12,7 @@ party, or to download and share.
 <p align="center">
   <img src="docs/screenshots/join.png" alt="A guest joins by scanning the event QR code" width="240" />
   <img src="docs/screenshots/capture.jpeg" alt="The capture screen: viewfinder, shutter, and the shots-left counter" width="240" />
-  <img src="docs/screenshots/slideshow.png" alt="The host runs the roll as a slideshow after the reveal" width="240" />
+  <img src="docs/screenshots/slideshow.jpeg" alt="The host runs the roll as a slideshow after the reveal" width="240" />
 </p>
 
 <p align="center"><em>Screenshots live in <code>docs/screenshots/</code> — drop your own in and they show up here automatically.</em></p>

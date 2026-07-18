@@ -6,7 +6,7 @@ these exact names (all lowercase):
 
 - `join.png` — a guest joining by scanning the event QR code (or the consent screen)
 - `capture.jpeg` — the capture screen: viewfinder, shutter, shots-left counter
-- `slideshow.png` — the host running the roll as a slideshow after the reveal
+- `slideshow.jpeg` — the host running the roll as a slideshow after the reveal
 
 Tips:
 
