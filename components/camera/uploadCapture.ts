@@ -178,3 +178,34 @@ export async function uploadCapture(
   const mediaId = await reserveAndPut(guestToken, capture, onProgress)
   await confirmUpload(guestToken, mediaId)
 }
+
+/**
+ * A read URL for a clip that is uploaded but not yet kept, so iOS can play it
+ * back over HTTPS in the review screen — it will not play the same bytes from a
+ * blob: URL. Only valid while the row is pending; keeping or cancelling ends it.
+ *
+ * Throws UploadRejectedError with code "object_missing" if the bytes are not in
+ * the bucket yet (the caller should keep showing the still), and
+ * UploadNetworkError if the request never landed.
+ */
+export async function fetchPreviewUrl(guestToken: string, mediaId: string): Promise<string> {
+  const response = await postJson(`/api/events/${guestToken}/upload/preview-url`, { mediaId })
+  if (!response.ok) throw await rejectionFrom(response)
+  const { url } = await response.json()
+  return url
+}
+
+/**
+ * Throw away a clip that was uploaded for review but not kept.
+ *
+ * Best-effort by design: a pending object left behind is swept within the hour,
+ * so a failed cancel is a slow cleanup, never a lost shot or a wrong counter.
+ * The caller does not wait on it or surface its failure.
+ */
+export async function cancelPending(guestToken: string, mediaId: string): Promise<void> {
+  try {
+    await postJson(`/api/events/${guestToken}/upload/cancel`, { mediaId })
+  } catch {
+    // Swallowed on purpose — see above.
+  }
+}

@@ -10,6 +10,10 @@ import { CapturePreview } from "./CapturePreview"
 import { UploadProgress } from "./UploadProgress"
 import {
   type Capture,
+  cancelPending,
+  confirmUpload,
+  fetchPreviewUrl,
+  reserveAndPut,
   UploadNetworkError,
   UploadRejectedError,
   uploadCapture,
@@ -27,15 +31,23 @@ import {
 const MAX_VIDEO_SECONDS = 15
 
 /**
- * Ordered by preference. Safari supports only mp4 and Chrome/Firefox record
- * webm, so a fixed choice would break capture outright on roughly half the
- * phones at a party. isTypeSupported is the only honest way to ask.
+ * Ordered by preference, mp4 first, and the order is the whole point.
+ *
+ * iOS is two-faced about webm: recent WebKit reports it can *record* webm
+ * (isTypeSupported says yes, because the VP8/9 encoder is there for WebRTC) but
+ * the <video> element cannot *play* webm at all. So a naive webm-first pick
+ * records a clip that dies with "format not supported" the moment the guest
+ * reviews it — and again in the host's slideshow — on every iPhone. mp4 is the
+ * one container iOS agrees to on both ends, and every other browser can play it
+ * too, so it is the safe default. webm stays only as a fallback for browsers
+ * that cannot encode mp4 (older desktop Chrome/Firefox), which can always play
+ * webm anyway. isTypeSupported is still the only honest way to ask each device.
  */
 const VIDEO_MIME_CANDIDATES = [
+  "video/mp4",
   "video/webm;codecs=vp9,opus",
   "video/webm;codecs=vp8,opus",
   "video/webm",
-  "video/mp4",
 ]
 
 function pickVideoMimeType(): string | null {
@@ -44,6 +56,17 @@ function pickVideoMimeType(): string | null {
 }
 
 type Mode = "photo" | "video"
+
+/**
+ * The background upload behind the video review (see the videoUpload state).
+ * "uploading" while the bytes go up, "ready" once they are playable over HTTPS,
+ * "failed" when there was no signal or the reserve was refused — in which case
+ * the review falls back to the still and Keep falls back to a full upload.
+ */
+type VideoUpload =
+  | { status: "uploading" }
+  | { status: "ready"; mediaId: string; previewUrl: string }
+  | { status: "failed" }
 
 export function CameraCapture({
   guestToken,
@@ -79,6 +102,23 @@ export function CameraCapture({
   const [recording, setRecording] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(MAX_VIDEO_SECONDS)
   const [capture, setCapture] = useState<Capture | null>(null)
+  // A still of the last recorded frame, for the review screen only. iOS refuses
+  // to play a freshly recorded clip from a blob: URL (the same bytes play fine
+  // once served over HTTPS in the slideshow), so on the phone the guest reviews
+  // this frame instead of a dead player. Never uploaded, never queued — a data:
+  // URL that lives only as long as the preview.
+  const [posterUrl, setPosterUrl] = useState<string | null>(null)
+  // Upload-first review, videos only. iOS will not play a recorded clip from a
+  // blob: URL, but it plays the same bytes fine over HTTPS — so a clip is
+  // uploaded to its pending object the moment recording stops, and the review
+  // plays it back from a signed URL. "ready" means the bytes are up and
+  // playable: keeping then only has to confirm them, discarding deletes them.
+  // Photos never touch this; they preview straight from the blob.
+  const [videoUpload, setVideoUpload] = useState<VideoUpload | null>(null)
+  // Bumped on every stop, keep, and discard. A background upload checks it when
+  // it finishes: if it has moved on, the guest retook or kept in the meantime,
+  // so the just-uploaded pending object is cancelled instead of shown.
+  const uploadGenRef = useRef(0)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [uploadsUsed, setUploadsUsed] = useState(initialUploadCount)
@@ -192,7 +232,10 @@ export function CameraCapture({
         // these two if a re-test shows it spinning the wrong way.
         orientationRef.current = ax > 0 ? 3 : 1
       } else if (Math.abs(ay) - Math.abs(ax) > 4) {
-        orientationRef.current = ay > 0 ? 0 : 2
+        // Portrait. iOS reports gravity as ay < 0 when the phone is held
+        // upright, so upright is 0 (no turn) and only a genuinely upside-down
+        // phone is 2. The reverse saved every normal portrait shot upside down.
+        orientationRef.current = ay > 0 ? 2 : 0
       }
       motionSeenRef.current = true
     }
@@ -278,14 +321,16 @@ export function CameraCapture({
     if (!context) return
 
     // Work from the centre so rotation and the front-camera mirror compose
-    // without fighting each other. Order is deliberate: the frame is turned
-    // upright, then the front camera is flipped horizontally in the finished
-    // image — iOS hands us the front frame already mirrored, so without the
-    // flip the kept photo has back-to-front text, which is not what the guest
-    // saw.
+    // without fighting each other. Order is deliberate and load-bearing: turn
+    // the frame upright FIRST, then flip the front camera. Rotate-then-flip
+    // makes the front and back cameras turn the same visible way; flip-then-
+    // rotate silently negates the rotation for the front camera only, which is
+    // why a sideways back-camera shot came out upside down while the front was
+    // fine. The flip itself un-mirrors the front frame iOS hands us already
+    // mirrored, so the kept photo does not have back-to-front text.
     context.translate(canvas.width / 2, canvas.height / 2)
+    context.rotate(-(quarterTurns * Math.PI) / 2)
     if (facingMode === "user") context.scale(-1, 1)
-    context.rotate((quarterTurns * Math.PI) / 2)
     context.drawImage(video, -frameWidth / 2, -frameHeight / 2)
 
     canvas.toBlob(
@@ -300,6 +345,41 @@ export function CameraCapture({
       "image/jpeg",
       0.85,
     )
+  }
+
+  // Push a just-recorded clip to its pending object in the background, so the
+  // review can play it back over HTTPS (iOS refuses the local blob). Guarded by
+  // the generation counter: if the guest retakes or keeps before this finishes,
+  // the upload it produced is cancelled rather than shown.
+  async function startVideoUpload(cap: Capture) {
+    const gen = ++uploadGenRef.current
+    setVideoUpload({ status: "uploading" })
+    try {
+      const mediaId = await reserveAndPut(guestToken, cap)
+      if (uploadGenRef.current !== gen) {
+        void cancelPending(guestToken, mediaId)
+        return
+      }
+      // One retry: a signed read URL cannot be minted until the PUT is visible
+      // in the bucket, which is usually instant but not guaranteed the same tick.
+      let previewUrl: string
+      try {
+        previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        previewUrl = await fetchPreviewUrl(guestToken, mediaId)
+      }
+      if (uploadGenRef.current !== gen) {
+        void cancelPending(guestToken, mediaId)
+        return
+      }
+      setVideoUpload({ status: "ready", mediaId, previewUrl })
+    } catch {
+      // No signal, or the reserve was refused. The review shows the still, and
+      // Keep falls back to a full upload-on-keep (quota gate + offline queue), so
+      // there is nothing to surface here.
+      if (uploadGenRef.current === gen) setVideoUpload({ status: "failed" })
+    }
   }
 
   // --- Video ----------------------------------------------------------------
@@ -339,8 +419,10 @@ export function CameraCapture({
     const drawFrame = () => {
       context.save()
       context.translate(canvas.width / 2, canvas.height / 2)
+      // Same order as the photo: rotate first, then flip the front camera, so
+      // both cameras turn the same visible way (see takePhoto for why).
+      context.rotate(-(quarterTurns * Math.PI) / 2)
       if (mirror) context.scale(-1, 1)
-      context.rotate((quarterTurns * Math.PI) / 2)
       context.drawImage(sourceVideo, -frameWidth / 2, -frameHeight / 2)
       context.restore()
       rafRef.current = requestAnimationFrame(drawFrame)
@@ -389,13 +471,23 @@ export function CameraCapture({
         (Date.now() - startedAtRef.current) / 1000,
       )
       const blob = new Blob(chunksRef.current, { type: mimeType })
+      // Grab the last drawn frame as the review still before cleanup — the
+      // canvas keeps its pixels, and this is the one frame iOS will actually
+      // show for a clip it will not play from a blob. Low quality on purpose:
+      // it is a keep/retake thumbnail, not the kept media.
+      const poster = recordCanvasRef.current?.toDataURL("image/jpeg", 0.7) ?? null
       cleanUpRecording()
       if (blob.size === 0) {
         setUploadError("The recording came out empty. Try again.")
         return
       }
+      const videoCapture: Capture = { blob, mediaType: "video", mimeType, durationSeconds }
       setUploadError(null)
-      setCapture({ blob, mediaType: "video", mimeType, durationSeconds })
+      setPosterUrl(poster)
+      setCapture(videoCapture)
+      // Start the upload now, while the guest is still deciding, so the review
+      // can play the clip back over HTTPS instead of the blob iOS will not touch.
+      void startVideoUpload(videoCapture)
     }
 
     recorderRef.current = recorder
@@ -425,9 +517,19 @@ export function CameraCapture({
     setUploadError(null)
 
     try {
-      await uploadCapture(guestToken, capture, setProgress)
+      if (capture.mediaType === "video" && videoUpload?.status === "ready") {
+        // The bytes are already up from the background upload — keeping only has
+        // to make them real. No second upload, no progress bar, just confirm.
+        setProgress(1)
+        await confirmUpload(guestToken, videoUpload.mediaId)
+      } else {
+        await uploadCapture(guestToken, capture, setProgress)
+      }
+      uploadGenRef.current++
       setUploadsUsed((count) => count + 1)
       setCapture(null)
+      setPosterUrl(null)
+      setVideoUpload(null)
     } catch (error) {
       if (error instanceof UploadRejectedError) {
         setUploadError(error.message)
@@ -441,7 +543,10 @@ export function CameraCapture({
           // Nothing to apologise for and nothing for the guest to do. The shot
           // is on the phone, the counter already treats it as spent, and the
           // notice below the shutter says the rest. Back to the camera.
+          uploadGenRef.current++
           setCapture(null)
+          setPosterUrl(null)
+          setVideoUpload(null)
         } else {
           // The queue could not take it — no IndexedDB, or no room left on the
           // device. The shot is still in memory and Keep still works, so say
@@ -488,9 +593,20 @@ export function CameraCapture({
       <div className="flex min-h-0 flex-1 flex-col">
         <CapturePreview
           capture={capture}
+          poster={posterUrl}
+          previewUrl={videoUpload?.status === "ready" ? videoUpload.previewUrl : null}
+          preparing={videoUpload?.status === "uploading"}
           onKeep={keep}
           onDiscard={() => {
+            // Invalidate any in-flight upload, and delete one that already landed
+            // — a discarded clip must not keep charging the guest a slot.
+            uploadGenRef.current++
+            if (capture.mediaType === "video" && videoUpload?.status === "ready") {
+              void cancelPending(guestToken, videoUpload.mediaId)
+            }
             setCapture(null)
+            setPosterUrl(null)
+            setVideoUpload(null)
             setUploadError(null)
           }}
           disabled={uploading}
