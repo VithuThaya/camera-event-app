@@ -5,7 +5,7 @@ in here — the README picks them up **automatically** as soon as files exist wi
 these exact names (all lowercase):
 
 - `join.png` — a guest joining by scanning the event QR code (or the consent screen)
-- `capture.png` — the capture screen: viewfinder, shutter, shots-left counter
+- `capture.jpeg` — the capture screen: viewfinder, shutter, shots-left counter
 - `slideshow.png` — the host running the roll as a slideshow after the reveal
 
 Tips:
