@@ -9,6 +9,41 @@ gets a handful of shots. Nothing is visible to anyone until the host unlocks it,
 and only the host collects the roll afterwards — to run as a slideshow at the
 party, or to download and share.
 
+<p align="center">
+  <img src="docs/screenshots/join.png" alt="A guest joins by scanning the event QR code" width="240" />
+  <img src="docs/screenshots/capture.png" alt="The capture screen: viewfinder, shutter, and the shots-left counter" width="240" />
+  <img src="docs/screenshots/slideshow.png" alt="The host runs the roll as a slideshow after the reveal" width="240" />
+</p>
+
+<p align="center"><em>Screenshots live in <code>docs/screenshots/</code> — drop your own in and they show up here automatically.</em></p>
+
+## How it works
+
+1. **Create an event.** Set how many shots each guest gets and how long it runs.
+2. **Share one QR code.** Guests scan it and join in their browser — no app, no signup.
+3. **Everyone shoots.** Each guest gets a handful of photos or short videos, and nothing is visible to anyone.
+4. **You unlock.** When the party winds down, the host reveals the whole roll.
+5. **Slideshow or download.** Play it back on the spot, or download everything as one ZIP.
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Why the constraints are the product](#why-the-constraints-are-the-product)
+- [Quick start](#quick-start)
+- [Status](#status) · [Known limitations & V2 backlog](#known-limitations--v2-backlog)
+- [Stack](#stack) · [The look](#the-look) · [Security model](#security-model)
+- [Setup](#setup) · [Testing on a real phone](#testing-on-a-real-phone)
+- [Licence](#licence)
+
+## Why the constraints are the product
+
+- **Few shots per guest.** Scarcity is the feature. Twenty deliberate photos
+  beat two thousand blurry ones.
+- **Delayed reveal.** Guests can't scroll a feed mid-party, because there is no
+  feed. They shoot and stay present.
+- **Private by default.** Guests never get a gallery. The host decides what the
+  event looks like when it's over.
+
 ## Quick start
 
 ```bash
@@ -31,15 +66,6 @@ back by hand — no more copying URLs or asking anyone for the link. Create the
 event **on that tunnel URL**, not on localhost, or the guest QR encodes localhost
 and sends the phone to itself. Full detail and the cloudflared install are under
 [Testing on a real phone](#testing-on-a-real-phone).
-
-## Why the constraints are the product
-
-- **Few shots per guest.** Scarcity is the feature. Twenty deliberate photos
-  beat two thousand blurry ones.
-- **Delayed reveal.** Guests can't scroll a feed mid-party, because there is no
-  feed. They shoot and stay present.
-- **Private by default.** Guests never get a gallery. The host decides what the
-  event looks like when it's over.
 
 ## Status
 
