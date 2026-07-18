@@ -44,18 +44,22 @@ export default function RootLayout({
   // Committed to dark, and the commitment lives in globals.css rather than in
   // utility classes here — the background carries the grain and the safelight
   // glow, which no `bg-*` class can express.
-  // Chrome on iOS stamps its own `__gcrremoteframetoken` onto this tag through
-  // the __gCrWeb bridge before React ever runs, and guests arrive by scanning a
-  // QR with whatever browser their phone opens. The attribute is the browser's,
-  // not ours, so there is nothing to reconcile — only a warning to stop. This
-  // suppression reaches one level: mismatches inside the app still report.
+  // Chrome's __gCrWeb bridge and page-annotating extensions stamp their own
+  // attributes (`__gcrremoteframetoken` on <html>, `data-__gcrweb-annotated…` on
+  // <body>) before React ever runs, and guests arrive by scanning a QR with
+  // whatever browser their phone opens. The attributes are the browser's, not
+  // ours, so there is nothing to reconcile — only a warning to stop. Suppression
+  // reaches one level, so both tags need it; mismatches inside the app still
+  // report.
   return (
     <html
       lang="en"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body suppressHydrationWarning className="flex min-h-full flex-col">
+        {children}
+      </body>
     </html>
   )
 }
