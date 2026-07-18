@@ -61,6 +61,47 @@ and goes up on its own.
 Three things still need a physical phone before any of this is claimed to work
 in someone's hand — see [What no script here can prove](#what-no-script-here-can-prove).
 
+## Known limitations & V2 backlog
+
+This is a **V1 you can run at a real event today**. The happy path — including
+the whole video capture, review, and upload flow — is confirmed on a real iPhone
+(portrait and landscape, front and back, offline, and airplane-mode-then-signal).
+What follows are known edges a code review surfaced, left in deliberately: none
+of them break the flow a guest actually walks, and each is a candidate for V2.
+
+**Small guards (a guest could see a broken or blank frame in a rare moment):**
+
+- **Expired preview URL.** On iOS the pre-upload video review plays the clip back
+  over a signed HTTPS URL that lasts ten minutes. If a guest leaves the review
+  screen open longer than that and the player then needs to re-fetch, it can go
+  dead with no fall back to the still frame. Fix: an `onError` on that element
+  that drops back to the poster still.
+- **Poster capture failure.** The review still is grabbed from the recording
+  canvas with `toDataURL`. It is not wrapped in a guard, so on the rare device
+  where it throws, the recorded clip is discarded silently instead of shown; and
+  if it merely returns empty on iOS before the upload lands, the review can show
+  an empty frame with no message. Fix: a `try/catch` around the grab and a
+  fallback caption when there is no still.
+
+**Rarer, deeper (correctness under a specific failure, not a visible break):**
+
+- **Double-counted clip on a lost confirm.** If the network drops in the instant
+  *after* the server records a kept video but *before* its response arrives, the
+  offline queue re-uploads the clip fresh, spending a second of the guest's shots
+  and storing a duplicate. This predates the upload-first review; the real fix is
+  a keep path that retries the *same* upload rather than queuing a new one.
+- **Counter vs. eager reservation.** Recording a video now reserves a server slot
+  immediately (so the clip can upload while the guest decides). A pending
+  reservation counts against the guest's cap for an hour, but the on-screen "X of
+  Y shots left" does not show it — so a guest who retakes many times on a flaky
+  connection (where the discard-delete keeps failing) could be told "out of
+  shots" while the counter still reads some left. Fix: reflect pending
+  reservations in the shown count, or release them more aggressively.
+
+Explicitly *not* on the list: a race in the cancel route where a concurrent keep
+and discard could delete a kept clip's bytes — it is unreachable through the UI,
+which disables the discard button while a keep is in flight.
+
 ## Stack
 
 Next.js 16 (App Router) with Node-runtime route handlers, Supabase Postgres +
