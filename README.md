@@ -9,6 +9,29 @@ gets a handful of shots. Nothing is visible to anyone until the host unlocks it,
 and only the host collects the roll afterwards — to run as a slideshow at the
 party, or to download and share.
 
+## Quick start
+
+```bash
+npm install
+cp .env.local.example .env.local   # then fill in the values
+npm run dev                        # http://localhost:3000
+```
+
+**Testing on a phone** needs HTTPS — the camera will not open on a plain LAN
+address. One command opens a public tunnel to the running dev server and prints a
+scannable **QR code straight to the terminal**:
+
+```bash
+npm run tunnel                     # in a second terminal, while `npm run dev` runs
+```
+
+Scan the QR with the phone and you are on the app over HTTPS. The tunnel draws a
+fresh `*.trycloudflare.com` URL on every start, so the QR saves you reading it
+back by hand — no more copying URLs or asking anyone for the link. Create the
+event **on that tunnel URL**, not on localhost, or the guest QR encodes localhost
+and sends the phone to itself. Full detail and the cloudflared install are under
+[Testing on a real phone](#testing-on-a-real-phone).
+
 ## Why the constraints are the product
 
 - **Few shots per guest.** Scarcity is the feature. Twenty deliberate photos
@@ -267,7 +290,16 @@ dev server at `http://192.168.x.x:3000` therefore fails in the worst way
 available: the page loads, the layout is right, and `navigator.mediaDevices` is
 simply absent. It reads as a bug in the capture code, and it is not one.
 
-A tunnel supplies a real certificate and sidesteps all of it:
+A tunnel supplies a real certificate and sidesteps all of it. `npm run tunnel`
+([`scripts/tunnel.mjs`](scripts/tunnel.mjs)) wraps `cloudflared`, reads the fresh
+URL out of its output, and renders it as a QR code in the terminal so a phone can
+join without anyone reading the URL back:
+
+```bash
+npm run tunnel                     # while `npm run dev` is running
+```
+
+The raw command it wraps, if you want it by hand:
 
 ```bash
 cloudflared tunnel --url http://localhost:3000
@@ -297,6 +329,47 @@ the tunnel serves a page that cannot load its own scripts.
 A quick tunnel is unauthenticated and world-reachable for as long as it runs,
 in front of a real Supabase project. The URL is unguessable and that is the only
 thing guarding it. `pkill cloudflared` when done.
+
+### Capture: orientation, mirror, and video format
+
+A phone camera lies about which way is up, and two of those lies had to be
+undone in the capture code so the host's roll comes out straight.
+
+**Upright, even with rotation lock on.** A shot taken sideways should be saved
+portrait, not on its side. `screen.orientation` knows the angle — but a phone
+with its rotation lock on reports portrait forever and never sees the sideways
+grip, which is the common case. So capture also listens to the motion sensor
+(`devicemotion`), which reads gravity directly and is the only signal that
+survives the lock; once it has spoken it wins over the screen. iOS hands out that
+sensor only after a permission prompt fired from a user gesture, so the first
+shutter or record tap requests it. The frame is then rotated upright on a canvas
+before it is kept. The one thing a phone can never tell us is direction under
+lock, so the landscape-left / landscape-right mapping is a fixed pair of
+constants in `CameraCapture.tsx` — flip them if a device turns out to spin the
+wrong way.
+
+**Un-mirrored front camera.** The preview is mirrored because that is what a
+mirror does, but iOS hands us the front frame already mirrored, so a plain draw
+bakes back-to-front text into the kept shot. Photos flip it back on the canvas.
+
+**Video gets the same treatment by recording through a canvas.** `MediaRecorder`
+on the raw camera track would keep both the mirror and the sideways grip, because
+it never sees the canvas the photo path uses. So a clip is drawn frame by frame
+through a canvas carrying the same rotate-and-flip transform, and
+`canvas.captureStream()` — plus the microphone track — is what actually gets
+recorded. Orientation is frozen at the start of the clip.
+
+**Format is whatever the phone records, converted on the way out.** Safari
+records `.mp4`, Chrome/Firefox record `.webm`, and the bytes are stored as-is —
+the slideshow and gallery play both without complaint, so nothing is transcoded
+server-side (that would need an ffmpeg pipeline the free tier cannot run). For a
+host who wants `.mp4` everywhere, [`scripts/webm-to-mp4.sh`](scripts/webm-to-mp4.sh)
+batch-converts a downloaded folder locally with ffmpeg — renaming does **not**
+work, the bytes must be re-encoded. The app is untouched by it.
+
+The preview autoplays the clip muted before the guest keeps it — iOS refuses
+autoplay with sound, and React does not apply the `muted` attribute reliably, so
+`CapturePreview` sets `muted` as a property and calls `play()` itself.
 
 ### What no script here can prove
 
