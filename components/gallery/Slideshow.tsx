@@ -159,6 +159,17 @@ export function Slideshow({ hostToken }: { hostToken: string }) {
         aria-label={paused ? "Resume" : "Pause"}
       />
 
+      {/* A way out. The tap-anywhere pause covers the whole screen, so on a
+          phone there is otherwise no route back to the dashboard — sits above
+          it with its own pointer-events so the tap lands on the link, not the
+          pause. */}
+      <Link
+        href={`/host/${hostToken}`}
+        className="absolute left-4 top-4 z-20 rounded bg-black/50 px-3 py-1.5 text-xs text-white/50 transition-opacity hover:text-white/90"
+      >
+        ← Back
+      </Link>
+
       {current.mediaType === "video" ? (
         <video
           // key remounts the element per clip: reusing it leaves the previous

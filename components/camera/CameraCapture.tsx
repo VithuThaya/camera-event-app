@@ -61,6 +61,17 @@ export function CameraCapture({
   const hardStopRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioTrackRef = useRef<MediaStreamTrack | null>(null)
   const startedAtRef = useRef<number>(0)
+  // How far the phone is turned from portrait, in 90° steps (0..3), read at the
+  // instant of a shot so a sideways grip is saved upright. A ref, not state: it
+  // changes as fast as the sensor fires and nothing renders from it.
+  const orientationRef = useRef(0)
+  const motionSeenRef = useRef(false)
+  const motionPermRef = useRef(false)
+  // The canvas a clip is recorded through, and its draw loop. Recording the raw
+  // camera track would bake in the front-camera mirror and a sideways grip;
+  // drawing each frame through a canvas is the one place to turn them upright.
+  const recordCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const rafRef = useRef<number | null>(null)
 
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>("photo")
@@ -158,6 +169,60 @@ export function CameraCapture({
     }
   }, [facingMode])
 
+  // --- Orientation ----------------------------------------------------------
+  // Which way is up, so a shot taken sideways can be turned upright. Two
+  // signals: screen.orientation is exact but a phone with its rotation lock on
+  // reports portrait forever and never sees a sideways grip; the motion sensor
+  // reads gravity directly and does, at the cost of a permission prompt on iOS.
+  // Once the sensor has spoken we trust it over the screen.
+  useEffect(() => {
+    function fromScreen() {
+      if (motionSeenRef.current) return
+      const angle = screen.orientation?.angle
+      if (typeof angle === "number") orientationRef.current = (((angle / 90) % 4) + 4) % 4
+    }
+    function fromMotion(event: DeviceMotionEvent) {
+      const g = event.accelerationIncludingGravity
+      if (!g || g.x == null || g.y == null) return
+      const ax = g.x
+      const ay = g.y
+      // A deadband so a phone held flat-ish does not flicker between guesses.
+      if (Math.abs(ax) - Math.abs(ay) > 4) {
+        // Landscape. Which shoulder the top of the phone fell toward — flip
+        // these two if a re-test shows it spinning the wrong way.
+        orientationRef.current = ax > 0 ? 3 : 1
+      } else if (Math.abs(ay) - Math.abs(ax) > 4) {
+        orientationRef.current = ay > 0 ? 0 : 2
+      }
+      motionSeenRef.current = true
+    }
+    fromScreen()
+    screen.orientation?.addEventListener("change", fromScreen)
+    window.addEventListener("devicemotion", fromMotion)
+    return () => {
+      screen.orientation?.removeEventListener("change", fromScreen)
+      window.removeEventListener("devicemotion", fromMotion)
+    }
+  }, [])
+
+  // iOS hands out the motion sensor only after an explicit ask, and only from a
+  // user gesture — so this rides on the first shutter or record tap. Denied, or
+  // an older browser, and we fall back to screen.orientation on its own.
+  async function ensureMotionPermission() {
+    if (motionPermRef.current) return
+    motionPermRef.current = true
+    const MotionEvent = window.DeviceMotionEvent as unknown as {
+      requestPermission?: () => Promise<string>
+    }
+    if (typeof MotionEvent?.requestPermission === "function") {
+      try {
+        await MotionEvent.requestPermission()
+      } catch {
+        // Denied. Nothing to do — the fallback is already in place.
+      }
+    }
+  }
+
   // --- Countdown ------------------------------------------------------------
   useEffect(() => {
     if (!recording) return
@@ -173,6 +238,12 @@ export function CameraCapture({
       clearTimeout(hardStopRef.current)
       hardStopRef.current = null
     }
+    // Stop drawing frames into the record canvas — the clip is done, and a loop
+    // left running would spin for the rest of the guest's visit.
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
     // Give the microphone straight back. It was only ever borrowed for the
     // length of the clip.
     audioTrackRef.current?.stop()
@@ -187,19 +258,35 @@ export function CameraCapture({
 
   // --- Photo ----------------------------------------------------------------
   function takePhoto() {
+    void ensureMotionPermission()
     const video = videoRef.current
     if (!video || !video.videoWidth) return
 
+    const frameWidth = video.videoWidth
+    const frameHeight = video.videoHeight
+
+    // Turned upright using whichever orientation signal we have (see the
+    // orientation effect): a sideways grip is saved as portrait, not on its
+    // side. 0 means portrait or unknown — nothing rotated, as before.
+    const quarterTurns = orientationRef.current
+    const sideways = quarterTurns === 1 || quarterTurns === 3
+
     const canvas = document.createElement("canvas")
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    canvas.width = sideways ? frameHeight : frameWidth
+    canvas.height = sideways ? frameWidth : frameHeight
     const context = canvas.getContext("2d")
     if (!context) return
 
-    // The preview is mirrored for the front camera because that is what people
-    // expect of a mirror. The photo is not — a mirrored photo has back-to-front
-    // text in it, which is not what they saw and not what they meant to shoot.
-    context.drawImage(video, 0, 0)
+    // Work from the centre so rotation and the front-camera mirror compose
+    // without fighting each other. Order is deliberate: the frame is turned
+    // upright, then the front camera is flipped horizontally in the finished
+    // image — iOS hands us the front frame already mirrored, so without the
+    // flip the kept photo has back-to-front text, which is not what the guest
+    // saw.
+    context.translate(canvas.width / 2, canvas.height / 2)
+    if (facingMode === "user") context.scale(-1, 1)
+    context.rotate((quarterTurns * Math.PI) / 2)
+    context.drawImage(video, -frameWidth / 2, -frameHeight / 2)
 
     canvas.toBlob(
       (blob) => {
@@ -217,8 +304,10 @@ export function CameraCapture({
 
   // --- Video ----------------------------------------------------------------
   async function startRecording() {
+    void ensureMotionPermission()
     const stream = streamRef.current
-    if (!stream) return
+    const sourceVideo = videoRef.current
+    if (!stream || !sourceVideo || !sourceVideo.videoWidth) return
 
     const mimeType = pickVideoMimeType()
     if (!mimeType) {
@@ -226,7 +315,41 @@ export function CameraCapture({
       return
     }
 
-    const tracks: MediaStreamTrack[] = [...stream.getVideoTracks()]
+    // Record through a canvas, not the raw camera track — the only place the
+    // front-camera mirror and a sideways grip can be turned right, the same
+    // transform a photo gets, applied to every frame. Orientation is frozen at
+    // the start: a clip that resized itself mid-record would not survive
+    // MediaRecorder.
+    const quarterTurns = orientationRef.current
+    const sideways = quarterTurns === 1 || quarterTurns === 3
+    const frameWidth = sourceVideo.videoWidth
+    const frameHeight = sourceVideo.videoHeight
+    const mirror = facingMode === "user"
+
+    const canvas = recordCanvasRef.current ?? document.createElement("canvas")
+    recordCanvasRef.current = canvas
+    canvas.width = sideways ? frameHeight : frameWidth
+    canvas.height = sideways ? frameWidth : frameHeight
+    const context = canvas.getContext("2d")
+    if (!context) {
+      setUploadError("This browser cannot record video. Try a photo instead.")
+      return
+    }
+
+    const drawFrame = () => {
+      context.save()
+      context.translate(canvas.width / 2, canvas.height / 2)
+      if (mirror) context.scale(-1, 1)
+      context.rotate((quarterTurns * Math.PI) / 2)
+      context.drawImage(sourceVideo, -frameWidth / 2, -frameHeight / 2)
+      context.restore()
+      rafRef.current = requestAnimationFrame(drawFrame)
+    }
+    drawFrame()
+
+    // 30 fps is plenty for a party clip and half the frames to encode.
+    const canvasStream = canvas.captureStream(30)
+    const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()]
     try {
       const audio = await navigator.mediaDevices.getUserMedia({ audio: true })
       const track = audio.getAudioTracks()[0]
@@ -246,6 +369,10 @@ export function CameraCapture({
         videoBitsPerSecond: 2_500_000,
       })
     } catch {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
       audioTrackRef.current?.stop()
       audioTrackRef.current = null
       setUploadError("This browser cannot record video. Try a photo instead.")

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 
 import { Button } from "@/components/ui/Button"
 
@@ -26,11 +26,27 @@ export function CapturePreview({
   disabled?: boolean
 }) {
   const url = useMemo(() => URL.createObjectURL(capture.blob), [capture.blob])
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   // Blob URLs pin the whole blob in memory until revoked. With a handful of
   // 40 MB clips per guest, leaking these is enough to get the tab killed on a
   // mid-range phone.
   useEffect(() => () => URL.revokeObjectURL(url), [url])
+
+  // iOS refuses to autoplay a clip that carries sound, and React does not apply
+  // the `muted` attribute to the element reliably in time — so set it as a
+  // property and start playback by hand. Muted autoplay is allowed; the controls
+  // let the guest unmute. Without this the preview sits on a dead play button
+  // and they never see their clip before spending a shot.
+  useEffect(() => {
+    if (capture.mediaType !== "video") return
+    const video = videoRef.current
+    if (!video) return
+    video.muted = true
+    video.play().catch(() => {
+      // Refused even muted — the controls are still there to start it by hand.
+    })
+  }, [url, capture.mediaType])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -51,7 +67,17 @@ export function CapturePreview({
           <img src={url} alt="Your shot, before you keep it" className="h-full w-full object-contain" />
         )}
         {capture.mediaType === "video" && (
-          <video src={url} className="h-full w-full object-contain" controls playsInline autoPlay loop />
+          // Playback is kicked off from the effect above, not autoPlay, so the
+          // muted property is guaranteed set before the first play attempt.
+          <video
+            ref={videoRef}
+            src={url}
+            className="h-full w-full object-contain"
+            controls
+            playsInline
+            loop
+            muted
+          />
         )}
       </div>
 
